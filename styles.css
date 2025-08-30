@@ -134,16 +134,18 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,18
 .chip{background:#152241;border:1px solid #213153;color:#d4e2ff;padding:6px 10px;border-radius:999px;font-weight:700}
 .dialog-actions{position:absolute;top:10px;right:12px}
 
-/* Mobile tweaks – center each album in Scroll view */
 @media (max-width: 720px){
-  .btn-row{justify-content:center}
-  main{padding-top:22px}
+  .btn-row{ justify-content:center }
+  main{ padding-top:22px }
   .scroller{
     grid-auto-columns:min(90vw, 420px);
     gap:16px;
     padding:14px 52px 26px;
-    justify-content:center;           /* center the column track */
-    scroll-padding: 0 52px;           /* so snap centers nicely */
+    /* Important: start at left, no centering gap */
+    justify-content:flex-start;
+    scroll-padding-left:52px;
   }
-  .card{ scroll-snap-align: center; } /* center each card on snap */
+  /* Center each card when snapping, but we still begin at the first */
+  .card{ scroll-snap-align: center; }
 }
+
