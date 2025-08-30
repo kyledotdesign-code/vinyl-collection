@@ -1,12 +1,16 @@
-/* Vinyl Collection — app.js (drop-in)
-   Uses your Google Sheet:
-   https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
-*/
+<!-- app.js -->
+<script>
+/* -------------------------------------------
+   Vinyl Collection — drop-in app.js
+   Works with your published CSV sheet
+   (must end in .../pub?output=csv)
+-------------------------------------------- */
 
-// ---- 0) Config ----
+// 0) CONFIG
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
 
+// header synonyms so your sheet can be flexible
 const HEADER_ALIASES = {
   title:  ["title","album","record","release"],
   artist: ["artist","artists","band"],
@@ -15,105 +19,53 @@ const HEADER_ALIASES = {
   cover:  ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"]
 };
 
-// ---- 1) Element wiring ----
-const $  = (s, r=document) => r.querySelector(s);
-const $$ = (s, r=document) => [...r.querySelectorAll(s)];
-
+// 1) DOM (exact IDs from your index.html)
 const els = {
-  search: $('#search') || $('input[placeholder="Search"]'),
-  viewScroll: $('#viewScroll') || $$('button,.seg-btn').find(b=>/view:\s*scroll/i.test(b?.textContent||'')),
-  viewGrid:   $('#viewGrid')   || $$('button,.seg-btn').find(b=>/view:\s*grid/i.test(b?.textContent||'')),
-  sort: $('#sortSelect') || $$('select,button').find(x=>/sort/i.test(x?.textContent||'')),
-  shuffle: $('#btnShuffle') || $$('button').find(b=>/shuffle/i.test(b?.textContent||'')),
-  stats: $('#btnStats') || $$('button').find(b=>/stats/i.test(b?.textContent||'')),
-  googleSheet: $('#btnSheet') || $$('a,button').find(x=>/google\s*sheet/i.test(x?.textContent||'')),
-  main: $('main') || document.body,
-  scroller: $('.scroller'),
-  grid: $('.grid'),
-  leftArrow:  $('.nav-arrow.left'),
-  rightArrow: $('.nav-arrow.right'),
-  statsModal: $('#statsModal'),
-  statsBody:  $('#statsBody'),
+  search:       document.getElementById("search"),
+  viewScroll:   document.getElementById("view-scroll"),
+  viewGrid:     document.getElementById("view-grid"),
+  sort:         document.getElementById("sort"),
+  shuffle:      document.getElementById("shuffle"),
+  scroller:     document.getElementById("scroller"),
+  grid:         document.getElementById("grid"),
+  scrollPrev:   document.getElementById("scrollPrev"),
+  scrollNext:   document.getElementById("scrollNext"),
+  statsBtn:     document.getElementById("statsBtn"),
+  statsModal:   document.getElementById("statsModal"),
+  statsBody:    document.getElementById("statsBody"),
+  scrollView:   document.getElementById("scrollView"),
+  gridView:     document.getElementById("gridView"),
+  scrollerWrap: document.getElementById("scrollerWrap"),
+  main:         document.querySelector("main")
 };
 
-// Create minimal containers if missing
-(function ensureContainers(){
-  if(!els.scroller){
-    const wrap = document.createElement('section');
-    wrap.className = 'scroller-wrap view active';
-    wrap.innerHTML = `
-      <button class="nav-arrow left" aria-label="Previous"><span class="chev chev-left"></span></button>
-      <div class="scroller" id="scroller"></div>
-      <button class="nav-arrow right" aria-label="Next"><span class="chev chev-right"></span></button>
-    `;
-    els.main.appendChild(wrap);
-    els.scroller  = $('#scroller', wrap);
-    els.leftArrow = $('.nav-arrow.left', wrap);
-    els.rightArrow= $('.nav-arrow.right', wrap);
-  }
-  if(!els.grid){
-    const g = document.createElement('section');
-    g.className = 'grid view';
-    g.id = 'grid';
-    els.main.appendChild(g);
-    els.grid = g;
-  }
-  if(!els.statsModal){
-    const d = document.createElement('dialog');
-    d.id = 'statsModal';
-    d.innerHTML = `
-      <div class="stats-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <h2 style="margin:0">Collection Stats</h2>
-          <button id="closeStats" class="btn ghost">Close</button>
-        </div>
-        <div id="statsBody" class="stats-body"></div>
-      </div>`;
-    els.main.appendChild(d);
-    els.statsModal = d;
-    els.statsBody  = $('#statsBody', d);
-    $('#closeStats', d).addEventListener('click', ()=> d.close());
-  }
-})();
-
-// ---- 2) State ----
+// 2) STATE
 const state = {
   all: [],
   filtered: [],
-  view: 'scroll',   // 'scroll' | 'grid'
-  sortKey: 'title', // 'title' | 'artist'
+  view: "scroll",
+  sortKey: "title"
 };
 
-// ---- 3) CSV utils ----
-function pick(obj, synonyms){
-  for(const key of synonyms){
-    const hit = Object.keys(obj).find(h => h.trim().toLowerCase() === key);
-    if(hit && String(obj[hit]).trim()) return String(obj[hit]).trim();
+// 3) UTILITIES
+const pick = (row, synonyms) => {
+  for (const key of synonyms) {
+    const hit = Object.keys(row).find(h => h.trim().toLowerCase() === key);
+    if (hit && String(row[hit]).trim()) return String(row[hit]).trim();
   }
   return "";
+};
+
+const looksLikeImage = u => /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i.test(u||"");
+
+// resize/cache via wsrv (fast, CORS-friendly)
+function wsrv(url){
+  if(!url) return "";
+  const u = url.replace(/^https?:\/\//, "");
+  return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+u)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
 
-function parseCSV(text){
-  const rows=[]; let cur=['']; let i=0, inQ=false;
-  for(; i<text.length; i++){
-    const c=text[i];
-    if(c==='"'){ if(inQ && text[i+1]==='"'){ cur[cur.length-1]+='"'; i++; } else inQ=!inQ; }
-    else if(c===',' && !inQ){ cur.push(''); }
-    else if((c==='\n'||c==='\r') && !inQ){ if(cur.length>1||cur[0]!== '') rows.push(cur); cur=['']; if(c==='\r'&&text[i+1]==='\n') i++; }
-    else { cur[cur.length-1]+=c; }
-  }
-  if(cur.length>1||cur[0]!=='') rows.push(cur);
-  if(!rows.length) return { header:[], data:[] };
-  const header = rows[0].map(h=>h.trim());
-  const data = rows.slice(1).map(r=>{ const o={}; header.forEach((h,idx)=>o[h]=(r[idx]??'').trim()); return o; });
-  return { header, data };
-}
-
-// ---- 4) Artwork helpers ----
-const looksLikeImage = u => /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(u||"");
-const wsrv = url => !url ? "" : `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+url.replace(/^https?:\/\//,''))}&w=1000&h=1000&fit=cover&output=webp&q=85`;
-
-// Direct Wikipedia page → image
+// Wikipedia page → lead image (REST API)
 async function fromWikipediaPage(pageUrl){
   const m = pageUrl.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i);
   if(!m) return "";
@@ -127,264 +79,298 @@ async function fromWikipediaPage(pageUrl){
   }catch{ return ""; }
 }
 
-// Proxy through our Vercel serverless function (no 403/CORS)
-async function resolveArt(artist, title, coverHint){
-  const url = `/api/art?artist=${encodeURIComponent(artist||"")}&title=${encodeURIComponent(title||"")}&cover=${encodeURIComponent(coverHint||"")}`;
-  try{
-    const r = await fetch(url, { cache: "no-store" });
-    if(!r.ok) return { cover:"", genre:"" };
-    return await r.json(); // { cover, genre }
-  }catch{ return { cover:"", genre:"" }; }
+// very small concurrency pool (so we don’t block the UI)
+async function withConcurrency(items, limit, worker){
+  const running = new Set();
+  for (let i=0;i<items.length;i++){
+    const p = Promise.resolve(worker(items[i], i));
+    running.add(p);
+    p.finally(()=>running.delete(p));
+    if (running.size >= limit) await Promise.race(running);
+  }
+  await Promise.allSettled([...running]);
 }
 
-// ---- 5) Loader ----
+// 4) STATUS + SKELETONS
 function showStatus(msg){
-  let el = $('#status');
+  let el = document.getElementById("status");
   if(!el){
-    el = document.createElement('div');
-    el.id = 'status';
-    el.style.cssText = "margin:24px; padding:14px 16px; border:1px solid #1b2436; background:#0f1727; color:#eef2f8; border-radius:12px; max-width:820px";
+    el = document.createElement("div");
+    el.id = "status";
+    el.style.cssText = "margin:16px 0;padding:12px 14px;border:1px solid var(--border);background:#0f1727;color:var(--fg);border-radius:12px;";
     els.main.prepend(el);
   }
   el.textContent = msg;
 }
 
-async function loadFromSheet(){
-  try{
-    const res  = await fetch(SHEET_CSV, { cache:"no-store" });
-    const text = await res.text();
-    if(text.trim().startsWith("<")){
-      showStatus("Your Google Sheet link isn’t CSV. Use File → Publish to web → CSV (ends with output=csv).");
-      return;
-    }
-
-    const { data: rows } = parseCSV(text);
-
-    const normalized = [];
-    for(const r of rows){
-      const title  = pick(r, HEADER_ALIASES.title);
-      const artist = pick(r, HEADER_ALIASES.artist);
-      if(!title && !artist) continue;
-
-      const rec = {
-        title,
-        artist,
-        genre: pick(r, HEADER_ALIASES.genre),
-        notes: pick(r, HEADER_ALIASES.notes),
-        coverRaw: pick(r, HEADER_ALIASES.cover),
-        cover: ""
-      };
-
-      // 1) If sheet gives a direct image URL or Wikipedia page, try that first
-      if(rec.coverRaw){
-        if(looksLikeImage(rec.coverRaw))        rec.cover = wsrv(rec.coverRaw);
-        else if(/wikipedia\.org\/wiki\//i.test(rec.coverRaw)) rec.cover = await fromWikipediaPage(rec.coverRaw);
-      }
-
-      // 2) Fill missing cover/genre via our API (Apple → Deezer → Wikipedia)
-      if(!rec.cover || !rec.genre){
-        const { cover:c2, genre:g2 } = await resolveArt(rec.artist, rec.title, rec.coverRaw);
-        if(!rec.cover) rec.cover = c2 || "";
-        if(!rec.genre) rec.genre = g2 || "";
-      }
-
-      normalized.push(rec);
-    }
-
-    state.all = normalized;
-    state.filtered = [...normalized];
-    applySort();
-    render();
-    showStatus(`Loaded ${normalized.length} records from Google Sheet.`);
-  }catch(e){
-    console.error(e);
-    showStatus("Couldn’t load your Google Sheet. Check the URL or try again.");
-  }
-}
-
-// ---- 6) Renderers ----
-function cardHTML(rec, idx){
-  const safeTitle  = rec.title  || "Untitled";
-  const safeArtist = rec.artist || "Unknown Artist";
-  const cover = rec.cover || "";
-  const back = `
-    <div style="padding:16px;text-align:center">
-      <h3 style="margin-top:0">${safeTitle}</h3>
-      <p style="margin:4px 0 10px;color:#b7c2d7">${safeArtist}</p>
-      ${rec.genre ? `<div class="genre">${rec.genre}</div>` : ""}
-      ${rec.notes ? `<p style="margin-top:12px;white-space:pre-wrap">${rec.notes}</p>` : ""}
-    </div>
-  `;
+function skeletonCardHTML(i){
   return `
-    <div class="card" data-idx="${idx}" tabindex="0">
+    <article class="card" data-idx="${i}">
       <div class="sleeve">
         <div class="face front">
-          <img class="cover" loading="lazy" decoding="async" alt="${safeTitle} — ${safeArtist}" src="${cover}">
+          <div class="cover" style="width:100%;height:100%;background:linear-gradient(90deg,#0a0f20 25%,#10182e 50%,#0a0f20 75%);background-size:200% 100%;animation:sh 1.2s infinite;"></div>
+        </div>
+        <div class="face back"></div>
+      </div>
+      <div class="caption">
+        <div class="caption-title">&nbsp;</div>
+        <div class="caption-artist">&nbsp;</div>
+      </div>
+    </article>`;
+}
+// shimmer keyframes (inlined once)
+if(!document.getElementById("shimmer-style")){
+  const s = document.createElement("style");
+  s.id="shimmer-style";
+  s.textContent=`@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}`;
+  document.head.appendChild(s);
+}
+
+// 5) RENDERING
+function cardHTML(rec, idx){
+  const t = rec.title || "Untitled";
+  const a = rec.artist || "Unknown Artist";
+  const cover = rec.cover || "";
+  const back = `
+    <div class="meta">
+      <h3 class="title">${t}</h3>
+      <p class="artist">${a}</p>
+      ${rec.genre ? `<p class="genre">${rec.genre}</p>` : ""}
+      ${rec.notes ? `<p style="margin-top:10px;white-space:pre-wrap">${rec.notes}</p>` : ""}
+    </div>`;
+  return `
+    <article class="card" data-idx="${idx}" role="listitem" tabindex="0">
+      <div class="sleeve">
+        <div class="face front">
+          ${cover ? `<img class="cover" alt="${t} — ${a}" loading="lazy" decoding="async" src="${cover}">` :
+                     `<div class="cover" style="width:100%;height:100%;background:linear-gradient(90deg,#0a0f20 25%,#10182e 50%,#0a0f20 75%);background-size:200% 100%;animation:sh 1.2s infinite;"></div>`}
         </div>
         <div class="face back">${back}</div>
       </div>
       <div class="caption">
-        <div class="caption-title">${safeTitle}</div>
-        <div class="caption-artist">${safeArtist}</div>
+        <div class="caption-title">${t}</div>
+        <div class="caption-artist">${a}</div>
       </div>
-    </div>
-  `;
+    </article>`;
 }
 
-function renderScroll(){
-  els.scroller.innerHTML = state.filtered.map((r,i)=>cardHTML(r,i)).join('');
-  bindCardFlips(els.scroller);
-}
-
-function renderGrid(){
-  els.grid.innerHTML = state.filtered.map((r,i)=>cardHTML(r,i)).join('');
-  bindCardFlips(els.grid);
-}
-
-function render(){
-  if(state.view === 'scroll'){
-    $('.view.scroller-wrap')?.classList.add('active');
-    els.grid?.classList.remove('active');
-    renderScroll();
-    toggleArrows(true);
-  } else {
-    $('.view.scroller-wrap')?.classList.remove('active');
-    els.grid?.classList.add('active');
-    renderGrid();
-    toggleArrows(false);
-  }
-}
-
-function bindCardFlips(root){
-  root.addEventListener('click', (e)=>{
-    const card = e.target.closest('.card');
+function bindCardFlips(container){
+  container.addEventListener("click", (e)=>{
+    const card = e.target.closest(".card");
     if(!card) return;
-    card.classList.toggle('flipped');
+    card.classList.toggle("flipped");
   });
 }
 
-// ---- 7) UI behaviors ----
-function toggleArrows(show){
-  if(els.leftArrow)  els.leftArrow.style.display  = show ? '' : 'none';
-  if(els.rightArrow) els.rightArrow.style.display = show ? '' : 'none';
+function renderScroll(){
+  els.scroller.innerHTML = state.filtered.length
+    ? state.filtered.map((r,i)=>cardHTML(r,i)).join("")
+    : "";
+  bindCardFlips(els.scroller);
+}
+function renderGrid(){
+  els.grid.innerHTML = state.filtered.length
+    ? state.filtered.map((r,i)=>cardHTML(r,i)).join("")
+    : "";
+  bindCardFlips(els.grid);
+}
+function applySort(){
+  const k = state.sortKey;
+  state.filtered.sort((a,b)=>{
+    const A = (a[k]||"").toLowerCase(), B = (b[k]||"").toLowerCase();
+    return A.localeCompare(B);
+  });
+}
+function render(){
+  applySort();
+  if(state.view === "scroll"){
+    els.scrollView.classList.add("active");
+    els.gridView.classList.remove("active");
+    renderScroll();
+    // show arrows in scroll view only
+    els.scrollPrev.style.display = "";
+    els.scrollNext.style.display = "";
+  }else{
+    els.gridView.classList.add("active");
+    els.scrollView.classList.remove("active");
+    renderGrid();
+    els.scrollPrev.style.display = "none";
+    els.scrollNext.style.display = "none";
+  }
 }
 
-function smoothScrollBy(px){
-  els.scroller?.scrollBy({ left: px, behavior: 'smooth' });
+// 6) LOAD SHEET → immediate skeletons → hydrate artwork in background
+async function loadFromSheet(){
+  showStatus("Loading Google Sheet…");
+  const r = await fetch(SHEET_CSV, { cache: "no-store" });
+  const text = await r.text();
+
+  // Papa is loaded via <script> in your HTML
+  const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
+  const rows = parsed.data || [];
+
+  // normalize rows
+  const normalized = rows.map((row)=> {
+    const title  = pick(row, HEADER_ALIASES.title);
+    const artist = pick(row, HEADER_ALIASES.artist);
+    const genre  = pick(row, HEADER_ALIASES.genre);
+    const notes  = pick(row, HEADER_ALIASES.notes);
+    const coverRaw = pick(row, HEADER_ALIASES.cover);
+    let cover = "";
+
+    if (coverRaw){
+      if (looksLikeImage(coverRaw)) cover = wsrv(coverRaw);
+      else if (/wikipedia\.org\/wiki\//i.test(coverRaw)) cover = ""; // resolve asynchronously
+      else cover = wsrv(coverRaw); // try anyway
+    }
+
+    return { title, artist, genre, notes, coverRaw, cover };
+  }).filter(r => r.title || r.artist);
+
+  state.all = [...normalized];
+  state.filtered = [...normalized];
+
+  showStatus(`Loaded ${state.all.length} records from Google Sheet.`);
+  // quick skeleton fill (so it never looks empty)
+  const skeletons = Array.from({length: Math.min(6, state.all.length)}, (_,i)=>skeletonCardHTML(i)).join("");
+  els.scroller.innerHTML = skeletons;
+  els.grid.innerHTML     = skeletons;
+
+  // first paint right away
+  render();
+
+  // hydrate missing Wikipedia covers in the background (concurrency 6)
+  const needWiki = state.all
+    .map((rec, idx) => ({ rec, idx }))
+    .filter(x => !x.rec.cover && /wikipedia\.org\/wiki\//i.test(x.rec.coverRaw||""));
+
+  await withConcurrency(needWiki, 6, async ({rec, idx})=>{
+    const img = await fromWikipediaPage(rec.coverRaw);
+    if (img){
+      rec.cover = img;
+      // live-update whichever view is mounted
+      const el = document.querySelector(`.card[data-idx="${idx}"] .cover`);
+      if (el){
+        if (el.tagName === "IMG") el.src = img;
+        else {
+          const imgTag = document.createElement("img");
+          imgTag.className = "cover";
+          imgTag.alt = `${rec.title || "Untitled"} — ${rec.artist || "Unknown Artist"}`;
+          imgTag.loading = "lazy";
+          imgTag.decoding = "async";
+          imgTag.src = img;
+          el.replaceWith(imgTag);
+        }
+      }
+    }
+  });
+
+  // refresh stats link text if user searches later
 }
 
-els.search && els.search.addEventListener('input', (e)=>{
+// 7) SEARCH / SORT / VIEW / SHUFFLE
+els.search.addEventListener("input", (e)=>{
   const q = e.target.value.trim().toLowerCase();
   state.filtered = state.all.filter(r=>{
     const hay = `${r.title} ${r.artist} ${r.genre} ${r.notes}`.toLowerCase();
     return hay.includes(q);
   });
-  applySort();
   render();
 });
 
-function setSortKey(key){
-  state.sortKey = key;
-  if(els.sort && els.sort.tagName === 'BUTTON'){
-    els.sort.textContent = `Sort: ${key[0].toUpperCase()+key.slice(1)}`;
-  }
-  applySort(); render();
-}
-function applySort(){
-  const k = state.sortKey;
-  state.filtered.sort((a,b)=>{
-    const A = (a[k]||"").toLowerCase();
-    const B = (b[k]||"").toLowerCase();
-    return A.localeCompare(B);
-  });
-}
+els.sort.addEventListener("change", ()=>{
+  state.sortKey = els.sort.value || "title";
+  render();
+});
 
-if(els.sort){
-  if(els.sort.tagName === 'SELECT'){
-    els.sort.addEventListener('change', ()=> setSortKey(els.sort.value || 'title'));
-  } else {
-    els.sort.addEventListener('click', ()=> setSortKey(state.sortKey === 'title' ? 'artist' : 'title'));
-  }
-}
-
-els.shuffle && els.shuffle.addEventListener('click', ()=>{
-  for(let i=state.filtered.length-1;i>0;i--){
+els.shuffle.addEventListener("click", ()=>{
+  for (let i=state.filtered.length-1;i>0;i--){
     const j = Math.floor(Math.random()*(i+1));
     [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
   }
   render();
 });
 
-els.viewScroll && els.viewScroll.addEventListener('click', ()=>{
-  state.view = 'scroll';
-  els.viewScroll?.classList.add('active');
-  els.viewGrid?.classList.remove('active');
-  render();
-});
-els.viewGrid && els.viewGrid.addEventListener('click', ()=>{
-  state.view = 'grid';
-  els.viewGrid?.classList.add('active');
-  els.viewScroll?.classList.remove('active');
+els.viewScroll.addEventListener("click", ()=>{
+  els.viewScroll.classList.add("active");
+  els.viewGrid.classList.remove("active");
+  state.view = "scroll";
   render();
 });
 
-els.leftArrow  && els.leftArrow.addEventListener('click', ()=> smoothScrollBy(-Math.round(els.scroller.clientWidth*0.9)));
-els.rightArrow && els.rightArrow.addEventListener('click', ()=> smoothScrollBy( Math.round(els.scroller.clientWidth*0.9)));
+els.viewGrid.addEventListener("click", ()=>{
+  els.viewGrid.classList.add("active");
+  els.viewScroll.classList.remove("active");
+  state.view = "grid";
+  render();
+});
 
-// ---- 8) Stats ----
+els.scrollPrev.addEventListener("click", ()=> {
+  els.scroller.scrollBy({ left: -Math.round(els.scroller.clientWidth*0.9), behavior:"smooth" });
+});
+els.scrollNext.addEventListener("click", ()=> {
+  els.scroller.scrollBy({ left:  Math.round(els.scroller.clientWidth*0.9), behavior:"smooth" });
+});
+
+// 8) STATS (artists styled like genre chips)
 function buildStats(recs){
-  const total = recs.length;
   const artistMap = new Map();
   const genreMap  = new Map();
-  for(const r of recs){
+  recs.forEach(r=>{
     if(r.artist) artistMap.set(r.artist, (artistMap.get(r.artist)||0)+1);
     if(r.genre){
-      for(const g of String(r.genre).split(/[\/,&]| and /i).map(s=>s.trim()).filter(Boolean)){
-        genreMap.set(g, (genreMap.get(g)||0)+1);
-      }
+      String(r.genre)
+        .split(/[\/,&]| and /i)
+        .map(s=>s.trim()).filter(Boolean)
+        .forEach(g=> genreMap.set(g, (genreMap.get(g)||0)+1));
     }
-  }
-  const topArtists = [...artistMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10);
+  });
+  const topArtists = [...artistMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);
   const topGenres  = [...genreMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);
-  return { total, uniqArtists: artistMap.size, topArtists, topGenres };
+  return { total: recs.length, uniqArtists: artistMap.size, topArtists, topGenres };
 }
 
 function openStats(){
   const s = buildStats(state.filtered);
-  const body = els.statsBody; body.innerHTML = "";
+  const body = els.statsBody;
+  body.innerHTML = "";
 
-  const grid = document.createElement('div'); grid.className='stat-grid';
-  const totalGenres = s.topGenres.length;
+  const grid = document.createElement("div");
+  grid.className = "stat-grid";
   grid.innerHTML = `
     <div class="stat-tile"><div>Total Albums</div><div class="stat-big">${s.total}</div></div>
     <div class="stat-tile"><div>Unique Artists</div><div class="stat-big">${s.uniqArtists}</div></div>
-    <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${totalGenres}</div></div>
-  `;
+    <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${s.topGenres.length}</div></div>`;
   body.appendChild(grid);
 
   if (s.topArtists.length){
-    const h = document.createElement('h3'); h.textContent='Top Artists'; body.appendChild(h);
-    const ul = document.createElement('ul'); ul.style.listStyle='none'; ul.style.padding=0;
-    s.topArtists.forEach(([name,n])=>{
-      const li=document.createElement('li'); li.textContent=`${name} — ${n}`; ul.appendChild(li);
+    const h = document.createElement("h3"); h.textContent = "Top Artists"; body.appendChild(h);
+    const chips = document.createElement("div"); chips.className = "chips";
+    s.topArtists.forEach(([name,count])=>{
+      const span = document.createElement("span");
+      span.className = "chip";
+      span.textContent = `${name} • ${count}`;
+      chips.appendChild(span);
     });
-    body.appendChild(ul);
+    body.appendChild(chips);
   }
 
   if (s.topGenres.length){
-    const h = document.createElement('h3'); h.textContent='Top Genres'; body.appendChild(h);
-    const chips = document.createElement('div'); chips.className='chips';
-    s.topGenres.forEach(([g,n])=>{
-      const c=document.createElement('span'); c.className='chip'; c.textContent=`${g} • ${n}`; chips.appendChild(c);
+    const h = document.createElement("h3"); h.textContent = "Top Genres"; body.appendChild(h);
+    const chips = document.createElement("div"); chips.className = "chips";
+    s.topGenres.forEach(([g,count])=>{
+      const span = document.createElement("span");
+      span.className = "chip";
+      span.textContent = `${g} • ${count}`;
+      chips.appendChild(span);
     });
     body.appendChild(chips);
-  } else {
-    const p=document.createElement('p'); p.textContent='No genres found. Add a "Genre" column in the sheet to see genre stats.'; body.appendChild(p);
   }
 
   els.statsModal.showModal();
 }
-els.stats && els.stats.addEventListener('click', openStats);
+els.statsBtn.addEventListener("click", openStats);
 
-// ---- 9) Kickoff ----
+// 9) KICK OFF
 loadFromSheet();
+</script>
