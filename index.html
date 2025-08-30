@@ -6,20 +6,29 @@
   <title>Vinyl Collection</title>
 
   <!-- Icons / PWA -->
-  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-  <link rel="manifest" href="./manifest.webmanifest" />
-  <meta name="theme-color" content="#0e1422" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0f1115">
 
-  <!-- Fonts & Styles -->
+  <!-- Preconnects for speed -->
+  <link rel="preconnect" href="https://docs.google.com" crossorigin>
+  <link rel="preconnect" href="https://wsrv.nl" crossorigin>
+  <link rel="preconnect" href="https://en.wikipedia.org" crossorigin>
+  <link rel="dns-prefetch" href="https://docs.google.com">
+  <link rel="dns-prefetch" href="https://wsrv.nl">
+  <link rel="dns-prefetch" href="https://en.wikipedia.org">
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css" />
+
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="site-header">
     <div class="brand">
-      <span class="logo" aria-hidden="true">🎵</span>
+      <span class="logo">🎵</span>
       <h1>Vinyl Collection</h1>
     </div>
 
@@ -29,20 +38,18 @@
       <div class="btn-row">
         <div class="segmented" role="tablist" aria-label="View toggle">
           <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
-          <button id="view-grid" class="seg-btn" role="tab" aria-selected="false">View: Grid</button>
+          <button id="view-grid"   class="seg-btn" role="tab" aria-selected="false">View: Grid</button>
         </div>
 
-        <select id="sort" class="btn" aria-label="Sort">
+        <select id="sort" class="btn">
           <option value="title">Sort: Title</option>
           <option value="artist">Sort: Artist</option>
         </select>
 
         <button id="shuffle" class="btn">Shuffle</button>
-
         <a id="sheetLink" class="btn ghost"
            href="https://docs.google.com/spreadsheets/d/1wNsjoZ5UcucOrTUokWfETyx_C5xMKtwWZ7LeDjdi6sI/edit?usp=sharing"
            target="_blank" rel="noopener">Google Sheet</a>
-
         <button id="statsBtn" class="btn">Stats</button>
       </div>
     </div>
@@ -53,13 +60,11 @@
     <section id="scrollView" class="view view-scroll active" aria-label="Scroll view">
       <div id="scrollerWrap" class="scroller-wrap">
         <button id="scrollPrev" class="nav-arrow left" aria-label="Previous">
-          <span class="chev chev-left" aria-hidden="true"></span>
+          <span class="chev chev-left"></span>
         </button>
-
         <div id="scroller" class="scroller" tabindex="0" role="list"></div>
-
         <button id="scrollNext" class="nav-arrow right" aria-label="Next">
-          <span class="chev chev-right" aria-hidden="true"></span>
+          <span class="chev chev-right"></span>
         </button>
       </div>
     </section>
@@ -72,18 +77,26 @@
 
   <!-- Stats -->
   <dialog id="statsModal">
-    <form method="dialog" class="stats-card">
+    <div class="stats-card">
+      <button type="button" class="stats-close" aria-label="Close">×</button>
       <h2>Collection Stats</h2>
       <div id="statsBody" class="stats-body"></div>
-      <div class="dialog-actions">
-        <button class="btn">Close</button>
-      </div>
-    </form>
+    </div>
   </dialog>
 
-  <!-- Data parser -->
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- PapaParse (CSV) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
   <!-- App -->
-  <script defer src="./app.js"></script>
+  <script defer src="/app.js"></script>
+
+  <!-- Service worker (optional but recommended) -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(()=>{});
+      });
+    }
+  </script>
 </body>
 </html>
