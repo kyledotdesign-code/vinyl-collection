@@ -7,7 +7,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/styles.css">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#111829">
 </head>
 <body>
   <header class="site-header">
@@ -15,32 +15,51 @@
       <span class="logo">🎵</span>
       <h1>Vinyl Collection</h1>
     </div>
+
     <div class="controls">
       <input id="search" type="search" placeholder="Search" autocomplete="off" />
+
       <div class="btn-row">
         <div class="segmented" role="tablist" aria-label="View toggle">
           <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
-          <button id="view-grid" class="seg-btn" role="tab" aria-selected="false">View: Grid</button>
+          <button id="view-grid"   class="seg-btn"         role="tab" aria-selected="false">View: Grid</button>
         </div>
+
+        <select id="sort" class="btn">
+          <option value="title">Sort: Title</option>
+          <option value="artist">Sort: Artist</option>
+        </select>
+
         <button id="shuffle" class="btn">Shuffle</button>
-        <button id="prev" class="btn icon" title="Previous" aria-label="Previous"><span class="chev chev-left"></span></button>
-        <button id="next" class="btn icon" title="Next" aria-label="Next"><span class="chev chev-right"></span></button>
+        <a id="sheetLink" class="btn ghost"
+           href="https://docs.google.com/spreadsheets/d/1wNsjoZ5UcucOrTUokWfETyx_C5xMKtwWZ7LeDjdi6sI/edit?usp=sharing"
+           target="_blank" rel="noopener">Google Sheet</a>
         <button id="statsBtn" class="btn">Stats</button>
-        <a id="editSheet" class="btn ghost" href="https://docs.google.com/spreadsheets/d/1wNsjoZ5UcucOrTUokWfETyx_C5xMKtwWZ7LeDjdi6sI/edit?usp=sharing" target="_blank" rel="noopener">Google Sheet</a>
       </div>
     </div>
   </header>
 
   <main>
+    <!-- Scroll view -->
     <section id="scrollView" class="view view-scroll active" aria-label="Scroll view">
-      <div id="scroller" class="scroller" tabindex="0" role="list"></div>
+      <div id="scrollerWrap" class="scroller-wrap">
+        <button id="scrollPrev" class="nav-arrow left" aria-label="Previous">
+          <span class="chev chev-left"></span>
+        </button>
+        <div id="scroller" class="scroller" tabindex="0" role="list"></div>
+        <button id="scrollNext" class="nav-arrow right" aria-label="Next">
+          <span class="chev chev-right"></span>
+        </button>
+      </div>
     </section>
 
+    <!-- Grid view -->
     <section id="gridView" class="view view-grid" aria-label="Grid view">
       <div id="grid" class="grid" role="list"></div>
     </section>
   </main>
 
+  <!-- Stats -->
   <dialog id="statsModal">
     <form method="dialog" class="stats-card">
       <h2>Collection Stats</h2>
