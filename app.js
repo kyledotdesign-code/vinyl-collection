@@ -131,4 +131,260 @@ async function fromWikipediaPage(pageUrl){
 async function resolveArt(artist, title, coverHint){
   const url = `/api/art?artist=${encodeURIComponent(artist||"")}&title=${encodeURIComponent(title||"")}&cover=${encodeURIComponent(coverHint||"")}`;
   try{
-    const r = await fetch(url, { cache: "no-store
+    const r = await fetch(url, { cache: "no-store" });
+    if(!r.ok) return { cover:"", genre:"" };
+    return await r.json(); // { cover, genre }
+  }catch{ return { cover:"", genre:"" }; }
+}
+
+// ---- 5) Loader ----
+function showStatus(msg){
+  let el = $('#status');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'status';
+    el.style.cssText = "margin:24px; padding:14px 16px; border:1px solid #1b2436; background:#0f1727; color:#eef2f8; border-radius:12px; max-width:820px";
+    els.main.prepend(el);
+  }
+  el.textContent = msg;
+}
+
+async function loadFromSheet(){
+  try{
+    const res  = await fetch(SHEET_CSV, { cache:"no-store" });
+    const text = await res.text();
+    if(text.trim().startsWith("<")){
+      showStatus("Your Google Sheet link isn’t CSV. Use File → Publish to web → CSV (ends with output=csv).");
+      return;
+    }
+
+    const { data: rows } = parseCSV(text);
+
+    const normalized = [];
+    for(const r of rows){
+      const title  = pick(r, HEADER_ALIASES.title);
+      const artist = pick(r, HEADER_ALIASES.artist);
+      if(!title && !artist) continue;
+
+      const rec = {
+        title,
+        artist,
+        genre: pick(r, HEADER_ALIASES.genre),
+        notes: pick(r, HEADER_ALIASES.notes),
+        coverRaw: pick(r, HEADER_ALIASES.cover),
+        cover: ""
+      };
+
+      // 1) If sheet gives a direct image URL or Wikipedia page, try that first
+      if(rec.coverRaw){
+        if(looksLikeImage(rec.coverRaw))        rec.cover = wsrv(rec.coverRaw);
+        else if(/wikipedia\.org\/wiki\//i.test(rec.coverRaw)) rec.cover = await fromWikipediaPage(rec.coverRaw);
+      }
+
+      // 2) Fill missing cover/genre via our API (Apple → Deezer → Wikipedia)
+      if(!rec.cover || !rec.genre){
+        const { cover:c2, genre:g2 } = await resolveArt(rec.artist, rec.title, rec.coverRaw);
+        if(!rec.cover) rec.cover = c2 || "";
+        if(!rec.genre) rec.genre = g2 || "";
+      }
+
+      normalized.push(rec);
+    }
+
+    state.all = normalized;
+    state.filtered = [...normalized];
+    applySort();
+    render();
+    showStatus(`Loaded ${normalized.length} records from Google Sheet.`);
+  }catch(e){
+    console.error(e);
+    showStatus("Couldn’t load your Google Sheet. Check the URL or try again.");
+  }
+}
+
+// ---- 6) Renderers ----
+function cardHTML(rec, idx){
+  const safeTitle  = rec.title  || "Untitled";
+  const safeArtist = rec.artist || "Unknown Artist";
+  const cover = rec.cover || "";
+  const back = `
+    <div style="padding:16px;text-align:center">
+      <h3 style="margin-top:0">${safeTitle}</h3>
+      <p style="margin:4px 0 10px;color:#b7c2d7">${safeArtist}</p>
+      ${rec.genre ? `<div class="genre">${rec.genre}</div>` : ""}
+      ${rec.notes ? `<p style="margin-top:12px;white-space:pre-wrap">${rec.notes}</p>` : ""}
+    </div>
+  `;
+  return `
+    <div class="card" data-idx="${idx}" tabindex="0">
+      <div class="sleeve">
+        <div class="face front">
+          <img class="cover" loading="lazy" decoding="async" alt="${safeTitle} — ${safeArtist}" src="${cover}">
+        </div>
+        <div class="face back">${back}</div>
+      </div>
+      <div class="caption">
+        <div class="caption-title">${safeTitle}</div>
+        <div class="caption-artist">${safeArtist}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderScroll(){
+  els.scroller.innerHTML = state.filtered.map((r,i)=>cardHTML(r,i)).join('');
+  bindCardFlips(els.scroller);
+}
+
+function renderGrid(){
+  els.grid.innerHTML = state.filtered.map((r,i)=>cardHTML(r,i)).join('');
+  bindCardFlips(els.grid);
+}
+
+function render(){
+  if(state.view === 'scroll'){
+    $('.view.scroller-wrap')?.classList.add('active');
+    els.grid?.classList.remove('active');
+    renderScroll();
+    toggleArrows(true);
+  } else {
+    $('.view.scroller-wrap')?.classList.remove('active');
+    els.grid?.classList.add('active');
+    renderGrid();
+    toggleArrows(false);
+  }
+}
+
+function bindCardFlips(root){
+  root.addEventListener('click', (e)=>{
+    const card = e.target.closest('.card');
+    if(!card) return;
+    card.classList.toggle('flipped');
+  });
+}
+
+// ---- 7) UI behaviors ----
+function toggleArrows(show){
+  if(els.leftArrow)  els.leftArrow.style.display  = show ? '' : 'none';
+  if(els.rightArrow) els.rightArrow.style.display = show ? '' : 'none';
+}
+
+function smoothScrollBy(px){
+  els.scroller?.scrollBy({ left: px, behavior: 'smooth' });
+}
+
+els.search && els.search.addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toLowerCase();
+  state.filtered = state.all.filter(r=>{
+    const hay = `${r.title} ${r.artist} ${r.genre} ${r.notes}`.toLowerCase();
+    return hay.includes(q);
+  });
+  applySort();
+  render();
+});
+
+function setSortKey(key){
+  state.sortKey = key;
+  if(els.sort && els.sort.tagName === 'BUTTON'){
+    els.sort.textContent = `Sort: ${key[0].toUpperCase()+key.slice(1)}`;
+  }
+  applySort(); render();
+}
+function applySort(){
+  const k = state.sortKey;
+  state.filtered.sort((a,b)=>{
+    const A = (a[k]||"").toLowerCase();
+    const B = (b[k]||"").toLowerCase();
+    return A.localeCompare(B);
+  });
+}
+
+if(els.sort){
+  if(els.sort.tagName === 'SELECT'){
+    els.sort.addEventListener('change', ()=> setSortKey(els.sort.value || 'title'));
+  } else {
+    els.sort.addEventListener('click', ()=> setSortKey(state.sortKey === 'title' ? 'artist' : 'title'));
+  }
+}
+
+els.shuffle && els.shuffle.addEventListener('click', ()=>{
+  for(let i=state.filtered.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
+  }
+  render();
+});
+
+els.viewScroll && els.viewScroll.addEventListener('click', ()=>{
+  state.view = 'scroll';
+  els.viewScroll?.classList.add('active');
+  els.viewGrid?.classList.remove('active');
+  render();
+});
+els.viewGrid && els.viewGrid.addEventListener('click', ()=>{
+  state.view = 'grid';
+  els.viewGrid?.classList.add('active');
+  els.viewScroll?.classList.remove('active');
+  render();
+});
+
+els.leftArrow  && els.leftArrow.addEventListener('click', ()=> smoothScrollBy(-Math.round(els.scroller.clientWidth*0.9)));
+els.rightArrow && els.rightArrow.addEventListener('click', ()=> smoothScrollBy( Math.round(els.scroller.clientWidth*0.9)));
+
+// ---- 8) Stats ----
+function buildStats(recs){
+  const total = recs.length;
+  const artistMap = new Map();
+  const genreMap  = new Map();
+  for(const r of recs){
+    if(r.artist) artistMap.set(r.artist, (artistMap.get(r.artist)||0)+1);
+    if(r.genre){
+      for(const g of String(r.genre).split(/[\/,&]| and /i).map(s=>s.trim()).filter(Boolean)){
+        genreMap.set(g, (genreMap.get(g)||0)+1);
+      }
+    }
+  }
+  const topArtists = [...artistMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const topGenres  = [...genreMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);
+  return { total, uniqArtists: artistMap.size, topArtists, topGenres };
+}
+
+function openStats(){
+  const s = buildStats(state.filtered);
+  const body = els.statsBody; body.innerHTML = "";
+
+  const grid = document.createElement('div'); grid.className='stat-grid';
+  const totalGenres = s.topGenres.length;
+  grid.innerHTML = `
+    <div class="stat-tile"><div>Total Albums</div><div class="stat-big">${s.total}</div></div>
+    <div class="stat-tile"><div>Unique Artists</div><div class="stat-big">${s.uniqArtists}</div></div>
+    <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${totalGenres}</div></div>
+  `;
+  body.appendChild(grid);
+
+  if (s.topArtists.length){
+    const h = document.createElement('h3'); h.textContent='Top Artists'; body.appendChild(h);
+    const ul = document.createElement('ul'); ul.style.listStyle='none'; ul.style.padding=0;
+    s.topArtists.forEach(([name,n])=>{
+      const li=document.createElement('li'); li.textContent=`${name} — ${n}`; ul.appendChild(li);
+    });
+    body.appendChild(ul);
+  }
+
+  if (s.topGenres.length){
+    const h = document.createElement('h3'); h.textContent='Top Genres'; body.appendChild(h);
+    const chips = document.createElement('div'); chips.className='chips';
+    s.topGenres.forEach(([g,n])=>{
+      const c=document.createElement('span'); c.className='chip'; c.textContent=`${g} • ${n}`; chips.appendChild(c);
+    });
+    body.appendChild(chips);
+  } else {
+    const p=document.createElement('p'); p.textContent='No genres found. Add a "Genre" column in the sheet to see genre stats.'; body.appendChild(p);
+  }
+
+  els.statsModal.showModal();
+}
+els.stats && els.stats.addEventListener('click', openStats);
+
+// ---- 9) Kickoff ----
+loadFromSheet();
