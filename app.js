@@ -1,10 +1,9 @@
 /* -----------------------------------
-   Vinyl Collection — FAST app.js
-   Speed tricks:
-   - Instant render from CSV
-   - Lazy cover lookups via IntersectionObserver
-   - Concurrency limit so the browser isn't flooded
-   - localStorage cache for covers (persists across visits)
+   Vinyl Collection — TURBO STATIC
+   - No runtime lookups (fast!)
+   - Uses only your Sheet's direct image URLs
+   - Lazy images + batch rendering
+   - Local cache of CSV (stale-while-revalidate)
 ----------------------------------- */
 
 // 0) Config
@@ -44,19 +43,11 @@ const state = {
   filtered: [],
   view: "scroll",
   sortKey: "title",
+  batchSize: 24,
+  renderedCount: 0,
 };
 
-// localStorage cache for covers
-const LS_KEY = "vinylArtCacheV1";
-let artCache = {};
-try { artCache = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { artCache = {}; }
-function cacheGet(key){ return artCache[key]; }
-function cacheSet(key, url){
-  artCache[key] = url || "none";
-  try { localStorage.setItem(LS_KEY, JSON.stringify(artCache)); } catch {}
-}
-
-// 3) Helpers
+// 3) Small CSV parser (no external lib)
 function pick(obj, names){
   const keys = Object.keys(obj);
   for (const n of names){
@@ -65,6 +56,37 @@ function pick(obj, names){
   }
   return "";
 }
+function parseCSV(text){
+  const rows = [];
+  let cur = [''];
+  let i = 0, inQuotes = false;
+  for (; i < text.length; i++){
+    const c = text[i];
+    if (c === '"'){
+      if (inQuotes && text[i+1] === '"'){ cur[cur.length-1] += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (c === ',' && !inQuotes){
+      cur.push('');
+    } else if ((c === '\n' || c === '\r') && !inQuotes){
+      if(cur.length>1 || cur[0] !== '') rows.push(cur);
+      cur = [''];
+      if (c === '\r' && text[i+1]==='\n') i++; // CRLF
+    } else {
+      cur[cur.length-1] += c;
+    }
+  }
+  if(cur.length>1 || cur[0] !== '') rows.push(cur);
+  if(rows.length === 0) return { header: [], data: [] };
+  const header = rows[0].map(h => h.trim());
+  const data = rows.slice(1).map(r => {
+    const o = {};
+    header.forEach((h, idx)=> o[h] = (r[idx] ?? '').trim());
+    return o;
+  });
+  return { header, data };
+}
+
+// 4) Images & caching
 function looksLikeImage(u){ return /\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(u||""); }
 function wsrv(url){
   if(!url) return "";
@@ -72,110 +94,54 @@ function wsrv(url){
   return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+cleaned)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
 
-// Wikipedia summary image for a page title
-async function wikiSummaryImage(pageTitle){
-  try{
-    const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`);
-    if(!r.ok) return "";
-    const j = await r.json();
-    const src = j?.originalimage?.source || j?.thumbnail?.source;
-    return src ? wsrv(src) : "";
-  }catch{ return ""; }
-}
+// cache the sheet (stale-while-revalidate)
+const LS_SHEET = "vinylSheetV1";
+function cacheSetSheet(raw){ try{ localStorage.setItem(LS_SHEET, raw); }catch{} }
+function cacheGetSheet(){ try{ return localStorage.getItem(LS_SHEET) || ""; }catch{ return ""; } }
 
-// Wikipedia search best image
-async function wikiSearchCover(artist, title){
-  const q = `${title} ${artist} album`;
-  try{
-    const url = `https://en.wikipedia.org/w/api.php?origin=*&action=query&format=json&prop=pageimages&piprop=original|thumbnail&pithumbsize=1000&generator=search&gsrlimit=1&gsrsearch=${encodeURIComponent(q)}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if(!res.ok) return "";
-    const j = await res.json();
-    const pages = j?.query?.pages;
-    if(!pages) return "";
-    const page = Object.values(pages)[0];
-    const src = page?.original?.source || page?.thumbnail?.source;
-    return src ? wsrv(src) : "";
-  }catch{ return ""; }
-}
-
-// Resolve cover lazily (with cache)
-async function resolveCoverLazy({ coverHint, artist, title }){
-  const key = `${(artist||"").toLowerCase()}|${(title||"").toLowerCase()}`;
-  const cached = cacheGet(key);
-  if (cached && cached !== "none") return cached;
-  if (cached === "none") return ""; // known miss
-
-  let cover = "";
-
-  // If the hint is a direct image URL, use it immediately
-  if (coverHint && looksLikeImage(coverHint)) {
-    cover = wsrv(coverHint);
-  } else if (coverHint && /wikipedia\.org\/wiki\//i.test(coverHint)) {
-    // If hint is a wiki page, grab that page's lead image
-    const page = decodeURIComponent(coverHint.split("/wiki/")[1]||"").split(/[?#]/)[0];
-    cover = await wikiSummaryImage(page);
+// 5) Load sheet: render from cache immediately; revalidate in background
+async function loadSheet(){
+  const cached = cacheGetSheet();
+  if (cached){
+    try {
+      hydrateFromCSV(cached);
+      renderFresh();
+      // stats defer
+      requestIdleCallback?.(()=>updateStats());
+    } catch {}
   }
 
-  // If still nothing, try Wikipedia search
-  if (!cover) cover = await wikiSearchCover(artist||"", title||"");
-
-  cacheSet(key, cover || "none");
-  return cover || "";
+  try {
+    const res  = await fetch(SHEET_CSV, { cache: "no-store" });
+    const text = await res.text();
+    if (!text.trim().startsWith("<") && text !== cached){
+      cacheSetSheet(text);
+      hydrateFromCSV(text);
+      renderFresh();
+      requestIdleCallback?.(()=>updateStats());
+    }
+  } catch {}
 }
 
-// Tiny concurrency limiter for image lookups
-const MAX_CONCURRENCY = 6;
-let active = 0;
-const q = [];
-function enqueue(task){
-  q.push(task);
-  drain();
-}
-function drain(){
-  while (active < MAX_CONCURRENCY && q.length){
-    const t = q.shift();
-    active++;
-    t().finally(()=>{ active--; drain(); });
-  }
-}
-
-// 4) Load the sheet and render immediately
-async function loadFromSheet(){
-  const res  = await fetch(SHEET_CSV, { cache: "no-store" });
-  const text = await res.text();
-  if (text.trim().startsWith("<")) {
-    console.warn("Sheet link is not CSV. Ensure it ends with output=csv.");
-    return;
-  }
-  const rows = Papa.parse(text, {header:true, skipEmptyLines:true}).data;
-
+function hydrateFromCSV(text){
+  const parsed = parseCSV(text);
+  const rows = parsed.data;
   const list = rows.map(r => {
     const title  = pick(r, HEADER_ALIASES.title);
     const artist = pick(r, HEADER_ALIASES.artist);
     const genre  = pick(r, HEADER_ALIASES.genre);
     const notes  = pick(r, HEADER_ALIASES.notes);
     const coverHint = pick(r, HEADER_ALIASES.cover);
-    const immediate = (coverHint && looksLikeImage(coverHint)) ? wsrv(coverHint) : ""; // immediate only for direct images
-    return { title, artist, genre, notes, coverHint, cover: immediate };
+    const cover = looksLikeImage(coverHint) ? wsrv(coverHint) : ""; // DIRECT only
+    return { title, artist, genre, notes, cover };
   }).filter(x => x.title || x.artist);
 
   state.all = list;
   state.filtered = [...list];
   applySort();
-  render();
-
-  // Kick a quick pre-warm for the first few items
-  requestIdleCallback?.(()=>prewarmCovers(8));
 }
 
-// Prewarm a handful of covers immediately (first N cards)
-function prewarmCovers(n=8){
-  const imgs = $$(".cover").slice(0, n);
-  imgs.forEach(img => ensureCover(img));
-}
-
-// 5) Card creation (no templates = fast)
+// 6) Rendering (batched, no templates)
 function createCard(rec){
   const title  = rec.title  || "Untitled";
   const artist = rec.artist || "Unknown Artist";
@@ -195,25 +161,19 @@ function createCard(rec){
   const img = document.createElement("img");
   img.className = "cover";
   img.loading = "lazy";
+  img.decoding = "async";
+  img.fetchPriority = "low";
   img.referrerPolicy = "no-referrer";
   img.alt = `${title} — ${artist}`;
-
-  // If we already have an immediate cover, set it; else mark for lazy resolve
-  if (rec.cover) {
+  if (rec.cover){
     img.src = rec.cover;
   } else {
-    img.dataset.artist = artist;
-    img.dataset.title  = title;
-    img.dataset.hint   = rec.coverHint || "";
+    img.classList.add("skeleton");
   }
-
-  // One-time fallback if image fails
-  img.addEventListener("error", async () => {
-    if (img.dataset.retry === "1") return;
-    img.dataset.retry = "1";
-    // Try wiki search as a last resort
-    const fallback = await wikiSearchCover(artist, title);
-    if (fallback) img.src = fallback;
+  img.addEventListener("error", ()=>{
+    // leave skeleton if it fails
+    img.removeAttribute("src");
+    img.classList.add("skeleton");
   });
 
   faceFront.appendChild(img);
@@ -252,7 +212,7 @@ function createCard(rec){
   sleeve.appendChild(faceFront);
   sleeve.appendChild(faceBack);
 
-  // CAPTION (outside the sleeve so it never covers art)
+  // CAPTION
   const caption = document.createElement("div");
   caption.className = "caption";
   const capT = document.createElement("div");
@@ -272,76 +232,57 @@ function createCard(rec){
   return article;
 }
 
-function renderScroll(){
+function clearViews(){
   ui.scroller.innerHTML = "";
-  const frag = document.createDocumentFragment();
-  state.filtered.forEach(rec => frag.appendChild(createCard(rec)));
-  ui.scroller.appendChild(frag);
-  initArtObserver();
-}
-
-function renderGrid(){
   ui.grid.innerHTML = "";
-  const frag = document.createDocumentFragment();
-  state.filtered.forEach(rec => frag.appendChild(createCard(rec)));
-  ui.grid.appendChild(frag);
-  initArtObserver();
+  state.renderedCount = 0;
 }
 
-function render(){
-  const scrollView = $("#scrollView");
-  const gridView   = $("#gridView");
+function renderFresh(){
+  clearViews();
   if (state.view === "scroll"){
-    scrollView.classList.add("active");
-    gridView.classList.remove("active");
-    renderScroll();
+    $("#scrollView").classList.add("active");
+    $("#gridView").classList.remove("active");
     toggleArrows(true);
+    renderBatch(ui.scroller);
+    attachSentinel(ui.scroller);
   } else {
-    gridView.classList.add("active");
-    scrollView.classList.remove("active");
-    renderGrid();
+    $("#gridView").classList.add("active");
+    $("#scrollView").classList.remove("active");
     toggleArrows(false);
+    renderBatch(ui.grid);
+    attachSentinel(ui.grid);
   }
 }
 
-// 6) Lazy artwork via IntersectionObserver + concurrency
-let io;
-function initArtObserver(){
-  if (io) io.disconnect();
+function renderBatch(container){
+  const start = state.renderedCount;
+  const end = Math.min(start + state.batchSize, state.filtered.length);
+  if (start >= end) return;
 
-  io = new IntersectionObserver((entries)=>{
-    entries.forEach(entry=>{
-      if (!entry.isIntersecting) return;
-      const img = entry.target;
-      io.unobserve(img);
-      ensureCover(img);
+  const frag = document.createDocumentFragment();
+  for (let i = start; i < end; i++){
+    frag.appendChild(createCard(state.filtered[i]));
+  }
+  container.appendChild(frag);
+  state.renderedCount = end;
+}
+
+let sentinelIO;
+function attachSentinel(container){
+  const sentinel = document.createElement("div");
+  sentinel.style.height = "1px";
+  container.appendChild(sentinel);
+
+  if (sentinelIO) sentinelIO.disconnect();
+  sentinelIO = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if (!e.isIntersecting) return;
+      renderBatch(container);
     });
-  }, { root: state.view === "scroll" ? ui.scroller : null, rootMargin: "200px", threshold: 0.01 });
+  }, { root: state.view === "scroll" ? ui.scroller : null, rootMargin: "600px" });
 
-  $$(".cover").forEach(img=>{
-    if (!img.getAttribute("src")) io.observe(img);
-  });
-}
-
-function ensureCover(img){
-  const artist = img.dataset.artist;
-  const title  = img.dataset.title;
-  const hint   = img.dataset.hint;
-
-  if (!artist && !title) return; // already has src or not enough info
-
-  // Use cache immediately if available
-  const key = `${(artist||"").toLowerCase()}|${(title||"").toLowerCase()}`;
-  const cached = cacheGet(key);
-  if (cached && cached !== "none") {
-    img.src = cached;
-    return;
-  }
-
-  enqueue(async () => {
-    const url = await resolveCoverLazy({ coverHint: hint, artist, title });
-    if (url) img.src = url;
-  });
+  sentinelIO.observe(sentinel);
 }
 
 // 7) UI
@@ -359,13 +300,13 @@ ui.viewScroll?.addEventListener("click", ()=>{
   state.view = "scroll";
   ui.viewScroll.classList.add("active");
   ui.viewGrid?.classList.remove("active");
-  render();
+  renderFresh();
 });
 ui.viewGrid?.addEventListener("click", ()=>{
   state.view = "grid";
   ui.viewGrid.classList.add("active");
   ui.viewScroll?.classList.remove("active");
-  render();
+  renderFresh();
 });
 
 ui.search?.addEventListener("input", (e)=>{
@@ -375,12 +316,12 @@ ui.search?.addEventListener("input", (e)=>{
     return hay.includes(q);
   });
   applySort();
-  render();
+  renderFresh();
 });
 
 function setSortKey(k){
   state.sortKey = k;
-  applySort(); render();
+  applySort(); renderFresh();
 }
 function applySort(){
   const k = state.sortKey;
@@ -397,15 +338,14 @@ ui.shuffle?.addEventListener("click", ()=>{
     const j = Math.floor(Math.random()*(i+1));
     [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
   }
-  render();
+  renderFresh();
 });
 
-// Stats
+// 8) Stats (deferred build)
 function buildStats(recs){
   const total = recs.length;
   const artistMap = new Map();
   const genreMap  = new Map();
-
   for (const r of recs){
     if (r.artist) artistMap.set(r.artist, (artistMap.get(r.artist)||0)+1);
     if (r.genre){
@@ -420,8 +360,7 @@ function buildStats(recs){
   const topGenres  = [...genreMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);
   return { total, uniqArtists: artistMap.size, topArtists, topGenres };
 }
-
-function openStats(){
+function updateStats(){
   if (!ui.statsBody) return;
   const s = buildStats(state.filtered);
   ui.statsBody.innerHTML = "";
@@ -458,11 +397,9 @@ function openStats(){
     });
     ui.statsBody.appendChild(chips);
   }
-
-  ui.statsModal?.showModal();
 }
-ui.statsBtn?.addEventListener("click", openStats);
+ui.statsBtn?.addEventListener("click", ()=> ui.statsModal?.showModal());
 ui.statsModal?.querySelector(".stats-close")?.addEventListener("click", ()=> ui.statsModal.close());
 
-// 8) Kickoff
-loadFromSheet();
+// 9) Kickoff
+loadSheet();
