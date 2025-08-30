@@ -6,20 +6,20 @@
   <title>Vinyl Collection</title>
 
   <!-- Icons / PWA -->
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#111829">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#0e1422" />
 
   <!-- Fonts & Styles -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <header class="site-header">
     <div class="brand">
-      <span class="logo">🎵</span>
+      <span class="logo" aria-hidden="true">🎵</span>
       <h1>Vinyl Collection</h1>
     </div>
 
@@ -28,56 +28,62 @@
 
       <div class="btn-row">
         <div class="segmented" role="tablist" aria-label="View toggle">
-          <button id="viewScroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
-          <button id="viewGrid"   class="seg-btn"         role="tab" aria-selected="false">View: Grid</button>
+          <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
+          <button id="view-grid" class="seg-btn" role="tab" aria-selected="false">View: Grid</button>
         </div>
 
-        <select id="sortSelect" class="btn" aria-label="Sort">
+        <select id="sort" class="btn" aria-label="Sort">
           <option value="title">Sort: Title</option>
           <option value="artist">Sort: Artist</option>
         </select>
 
-        <button id="btnShuffle" class="btn">Shuffle</button>
-        <a id="btnSheet" class="btn ghost"
+        <button id="shuffle" class="btn">Shuffle</button>
+
+        <a id="sheetLink" class="btn ghost"
            href="https://docs.google.com/spreadsheets/d/1wNsjoZ5UcucOrTUokWfETyx_C5xMKtwWZ7LeDjdi6sI/edit?usp=sharing"
            target="_blank" rel="noopener">Google Sheet</a>
-        <button id="btnStats" class="btn">Stats</button>
+
+        <button id="statsBtn" class="btn">Stats</button>
       </div>
     </div>
   </header>
 
   <main>
     <!-- Scroll view -->
-    <section class="view scroller-section active" aria-label="Scroll view">
-      <div class="scroller-wrap">
-        <button class="nav-arrow left" aria-label="Previous">
-          <span class="chev chev-left"></span>
+    <section id="scrollView" class="view view-scroll active" aria-label="Scroll view">
+      <div id="scrollerWrap" class="scroller-wrap">
+        <button id="scrollPrev" class="nav-arrow left" aria-label="Previous">
+          <span class="chev chev-left" aria-hidden="true"></span>
         </button>
+
         <div id="scroller" class="scroller" tabindex="0" role="list"></div>
-        <button class="nav-arrow right" aria-label="Next">
-          <span class="chev chev-right"></span>
+
+        <button id="scrollNext" class="nav-arrow right" aria-label="Next">
+          <span class="chev chev-right" aria-hidden="true"></span>
         </button>
       </div>
     </section>
 
     <!-- Grid view -->
-    <section class="view grid-section" aria-label="Grid view">
+    <section id="gridView" class="view view-grid" aria-label="Grid view">
       <div id="grid" class="grid" role="list"></div>
     </section>
   </main>
 
   <!-- Stats -->
   <dialog id="statsModal">
-    <div class="stats-card">
-      <div class="stats-head">
-        <h2>Collection Stats</h2>
-        <button id="closeStats" class="btn ghost">Close</button>
-      </div>
+    <form method="dialog" class="stats-card">
+      <h2>Collection Stats</h2>
       <div id="statsBody" class="stats-body"></div>
-    </div>
+      <div class="dialog-actions">
+        <button class="btn">Close</button>
+      </div>
+    </form>
   </dialog>
 
+  <!-- Data parser -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <!-- App -->
-  <script src="/app.js"></script>
+  <script defer src="./app.js"></script>
 </body>
 </html>
