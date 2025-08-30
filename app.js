@@ -382,6 +382,12 @@ function buildStats(recs){
   return { total, uniqArtists: artistMap.size, topArtists, topGenres };
 }
 
+// inside loadFromSheet(), after you build each record:
+const { cover: c2, genre: g2 } = await resolveArt(rec.artist, rec.title, rec.coverRaw);
+rec.cover = rec.cover || c2;
+rec.genre = rec.genre || g2;
+
+
 function openStats(){
   const s = buildStats(state.filtered);
   const body = els.statsBody; body.innerHTML = "";
