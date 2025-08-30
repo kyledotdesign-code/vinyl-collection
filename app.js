@@ -1,9 +1,10 @@
 /* -----------------------------------
-   Vinyl Collection — TURBO STATIC
-   - No runtime lookups (fast!)
-   - Uses only your Sheet's direct image URLs
-   - Lazy images + batch rendering
-   - Local cache of CSV (stale-while-revalidate)
+   Vinyl Collection — TURBO STATIC v2
+   Faster:
+   - No external lookups
+   - Smaller first-image (LQ) then upgrade (HQ)
+   - IntersectionObserver lazy attach
+   - Smaller batches
 ----------------------------------- */
 
 // 0) Config
@@ -43,11 +44,11 @@ const state = {
   filtered: [],
   view: "scroll",
   sortKey: "title",
-  batchSize: 24,
+  batchSize: 12,       // smaller batches -> quicker first paint
   renderedCount: 0,
 };
 
-// 3) Small CSV parser (no external lib)
+// 3) CSV parsing
 function pick(obj, names){
   const keys = Object.keys(obj);
   for (const n of names){
@@ -70,7 +71,7 @@ function parseCSV(text){
     } else if ((c === '\n' || c === '\r') && !inQuotes){
       if(cur.length>1 || cur[0] !== '') rows.push(cur);
       cur = [''];
-      if (c === '\r' && text[i+1]==='\n') i++; // CRLF
+      if (c === '\r' && text[i+1]==='\n') i++;
     } else {
       cur[cur.length-1] += c;
     }
@@ -88,25 +89,23 @@ function parseCSV(text){
 
 // 4) Images & caching
 function looksLikeImage(u){ return /\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(u||""); }
-function wsrv(url){
+function wsrv(url, w=800){
   if(!url) return "";
   const cleaned = url.replace(/^https?:\/\//,"");
-  return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+cleaned)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
+  return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+cleaned)}&w=${w}&h=${w}&fit=cover&output=webp&q=82`;
 }
 
-// cache the sheet (stale-while-revalidate)
-const LS_SHEET = "vinylSheetV1";
+const LS_SHEET = "vinylSheetV2";
 function cacheSetSheet(raw){ try{ localStorage.setItem(LS_SHEET, raw); }catch{} }
 function cacheGetSheet(){ try{ return localStorage.getItem(LS_SHEET) || ""; }catch{ return ""; } }
 
-// 5) Load sheet: render from cache immediately; revalidate in background
+// 5) Load sheet: SWR
 async function loadSheet(){
   const cached = cacheGetSheet();
   if (cached){
     try {
       hydrateFromCSV(cached);
       renderFresh();
-      // stats defer
       requestIdleCallback?.(()=>updateStats());
     } catch {}
   }
@@ -132,8 +131,14 @@ function hydrateFromCSV(text){
     const genre  = pick(r, HEADER_ALIASES.genre);
     const notes  = pick(r, HEADER_ALIASES.notes);
     const coverHint = pick(r, HEADER_ALIASES.cover);
-    const cover = looksLikeImage(coverHint) ? wsrv(coverHint) : ""; // DIRECT only
-    return { title, artist, genre, notes, cover };
+
+    let low="", high="";
+    if (looksLikeImage(coverHint)){
+      low  = wsrv(coverHint, 240);   // small
+      high = wsrv(coverHint, 820);   // crisp
+    }
+
+    return { title, artist, genre, notes, low, high };
   }).filter(x => x.title || x.artist);
 
   state.all = list;
@@ -141,8 +146,51 @@ function hydrateFromCSV(text){
   applySort();
 }
 
-// 6) Rendering (batched, no templates)
-function createCard(rec){
+// 6) Image IO (lazy: low → high)
+let imgIO;
+function ensureImgObserver(root){
+  if (imgIO) imgIO.disconnect();
+  imgIO = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if (!entry.isIntersecting) return;
+      const img = entry.target;
+      const low  = img.dataset.srcLow;
+      const high = img.dataset.srcHigh;
+      if (!low && !high) return;
+
+      // set low first
+      if (low && !img.dataset.didLow){
+        img.src = low;
+        img.dataset.didLow = "1";
+        img.onload = ()=> img.classList.remove("skeleton");
+      }
+
+      // then swap to high (after low settles)
+      if (high && !img.dataset.didHigh){
+        const swap = new Image();
+        swap.decoding = "async";
+        swap.onload = ()=>{
+          img.src = high;
+          img.dataset.didHigh = "1";
+        };
+        swap.onerror = ()=>{}; // keep low
+        swap.src = high;
+      }
+
+      imgIO.unobserve(img);
+    });
+  }, {
+    root: state.view === "scroll" ? ui.scroller : null,
+    rootMargin: "800px 0px",
+    threshold: 0.01
+  });
+
+  // observe current covers
+  (root || document).querySelectorAll("img.cover").forEach(img => imgIO.observe(img));
+}
+
+// 7) Rendering
+function createCard(rec, index){
   const title  = rec.title  || "Untitled";
   const artist = rec.artist || "Unknown Artist";
 
@@ -159,19 +207,15 @@ function createCard(rec){
   faceFront.className = "face front";
 
   const img = document.createElement("img");
-  img.className = "cover";
+  img.className = "cover skeleton";
   img.loading = "lazy";
   img.decoding = "async";
-  img.fetchPriority = "low";
+  img.fetchPriority = index < 6 ? "high" : "low"; // first few get priority
   img.referrerPolicy = "no-referrer";
   img.alt = `${title} — ${artist}`;
-  if (rec.cover){
-    img.src = rec.cover;
-  } else {
-    img.classList.add("skeleton");
-  }
+  if (rec.low)   img.dataset.srcLow = rec.low;
+  if (rec.high)  img.dataset.srcHigh = rec.high;
   img.addEventListener("error", ()=>{
-    // leave skeleton if it fails
     img.removeAttribute("src");
     img.classList.add("skeleton");
   });
@@ -246,12 +290,14 @@ function renderFresh(){
     toggleArrows(true);
     renderBatch(ui.scroller);
     attachSentinel(ui.scroller);
+    ensureImgObserver(ui.scroller);
   } else {
     $("#gridView").classList.add("active");
     $("#scrollView").classList.remove("active");
     toggleArrows(false);
     renderBatch(ui.grid);
     attachSentinel(ui.grid);
+    ensureImgObserver(ui.grid);
   }
 }
 
@@ -262,9 +308,12 @@ function renderBatch(container){
 
   const frag = document.createDocumentFragment();
   for (let i = start; i < end; i++){
-    frag.appendChild(createCard(state.filtered[i]));
+    frag.appendChild(createCard(state.filtered[i], i));
   }
   container.appendChild(frag);
+
+  // Observe the newly added images
+  ensureImgObserver(container);
   state.renderedCount = end;
 }
 
@@ -280,12 +329,12 @@ function attachSentinel(container){
       if (!e.isIntersecting) return;
       renderBatch(container);
     });
-  }, { root: state.view === "scroll" ? ui.scroller : null, rootMargin: "600px" });
+  }, { root: state.view === "scroll" ? ui.scroller : null, rootMargin: "800px" });
 
   sentinelIO.observe(sentinel);
 }
 
-// 7) UI
+// 8) UI
 function toggleArrows(show){
   if (ui.prev) ui.prev.style.display = show ? "" : "none";
   if (ui.next) ui.next.style.display = show ? "" : "none";
@@ -341,7 +390,7 @@ ui.shuffle?.addEventListener("click", ()=>{
   renderFresh();
 });
 
-// 8) Stats (deferred build)
+// 9) Stats
 function buildStats(recs){
   const total = recs.length;
   const artistMap = new Map();
@@ -363,43 +412,3 @@ function buildStats(recs){
 function updateStats(){
   if (!ui.statsBody) return;
   const s = buildStats(state.filtered);
-  ui.statsBody.innerHTML = "";
-
-  const grid = document.createElement("div");
-  grid.className = "stat-grid";
-  grid.innerHTML = `
-    <div class="stat-tile"><div>Total Albums</div><div class="stat-big">${s.total}</div></div>
-    <div class="stat-tile"><div>Unique Artists</div><div class="stat-big">${s.uniqArtists}</div></div>
-    <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${s.topGenres.length}</div></div>
-  `;
-  ui.statsBody.appendChild(grid);
-
-  if (s.topArtists.length){
-    const h = document.createElement("h3"); h.textContent = "Top Artists"; ui.statsBody.appendChild(h);
-    const chips = document.createElement("div"); chips.className = "chips";
-    s.topArtists.forEach(([name,n])=>{
-      const c=document.createElement("span");
-      c.className="chip";
-      c.textContent=`${name} • ${n}`;
-      chips.appendChild(c);
-    });
-    ui.statsBody.appendChild(chips);
-  }
-
-  if (s.topGenres.length){
-    const h = document.createElement("h3"); h.textContent = "Top Genres"; ui.statsBody.appendChild(h);
-    const chips = document.createElement("div"); chips.className = "chips";
-    s.topGenres.forEach(([g,n])=>{
-      const c=document.createElement("span");
-      c.className="chip";
-      c.textContent=`${g} • ${n}`;
-      chips.appendChild(c);
-    });
-    ui.statsBody.appendChild(chips);
-  }
-}
-ui.statsBtn?.addEventListener("click", ()=> ui.statsModal?.showModal());
-ui.statsModal?.querySelector(".stats-close")?.addEventListener("click", ()=> ui.statsModal.close());
-
-// 9) Kickoff
-loadSheet();
