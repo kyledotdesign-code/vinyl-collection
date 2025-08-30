@@ -41,20 +41,58 @@ body{
 }
 #search::placeholder{color:var(--muted)}
 
-/* Buttons */
-.btn-row{margin-top:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center}
-.btn,.seg-btn,.btn.ghost, select.btn, a.btn{
-  padding:10px 14px;border-radius:12px;border:1px solid var(--border);
-  background:linear-gradient(180deg,#141a22,#0f141a); color:var(--fg); cursor:pointer;
-  font-weight:600; font-size:15px; letter-spacing:.2px;
-  transition:transform .06s ease, background .2s ease, border-color .2s ease;
-  box-shadow:var(--shadow); text-decoration:none;
+/* ——— Buttons: Option B (solid, rounded) ——— */
+:root{
+  --btn-bg: #3b82f6;          /* primary (you can tweak) */
+  --btn-bg-hover: #5a97fb;
+  --btn-bg-active: #2d6cdf;
+  --btn-outline: #2a344a;
 }
-.btn:hover,.seg-btn:hover,a.btn:hover{transform:translateY(-1px)}
-.btn:active,.seg-btn:active,a.btn:active{transform:translateY(0)}
-.btn.ghost{background:transparent}
-.btn.small{font-size:13px; padding:8px 10px}
-select.btn{appearance:none}
+
+.btn-row{margin-top:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center}
+
+/* make links look like buttons too */
+.btn, .seg-btn, a.btn{
+  text-decoration: none;
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:10px 18px;
+  border-radius:9999px;
+  border:none;
+  background:var(--btn-bg);
+  color:#fff;
+  font-weight:700; font-size:15px; letter-spacing:.2px;
+  box-shadow:0 6px 18px rgba(0,0,0,.25), inset 0 -2px 0 rgba(0,0,0,.15);
+  transition:transform .08s ease, filter .15s ease, background .15s ease;
+}
+.btn:hover, .seg-btn:hover, a.btn:hover{
+  transform:translateY(-1px); filter:brightness(1.02); background:var(--btn-bg-hover);
+}
+.btn:active, .seg-btn:active, a.btn:active{
+  transform:translateY(0); background:var(--btn-bg-active);
+}
+
+/* Segmented toggle looks like pills with selected state solid */
+.segmented{
+  display:inline-flex; gap:8px; background:transparent; border:none; padding:0;
+}
+.seg-btn{
+  background:transparent; color:var(--fg);
+  border:1px solid var(--btn-outline);
+  box-shadow:none;
+}
+.seg-btn:hover{ background:rgba(255,255,255,.06); color:#fff; }
+.seg-btn.active{
+  background:var(--btn-bg); color:#fff; border-color:transparent;
+  box-shadow:0 6px 18px rgba(0,0,0,.25), inset 0 -2px 0 rgba(0,0,0,.15);
+}
+
+/* Arrows: keep design, make chevrons white */
+.chev{
+  display:inline-block;width:14px;height:14px;
+  border-top:3px solid #fff; border-right:3px solid #fff;
+}
+.chev-left{transform:rotate(-135deg)}
+.chev-right{transform:rotate(45deg)}
 
 /* Segmented toggle */
 .segmented{display:inline-flex;background:#10161d;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px}
