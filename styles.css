@@ -1,5 +1,5 @@
 :root{
-  /* Dark, neutral, faster-feel palette */
+  /* Dark neutral theme */
   --bg: #0f1318;
   --bg2:#0b0e12;
   --fg: #e9eef5;
@@ -53,6 +53,7 @@ body{
 .btn:hover,.seg-btn:hover,a.btn:hover{transform:translateY(-1px)}
 .btn:active,.seg-btn:active,a.btn:active{transform:translateY(0)}
 .btn.ghost{background:transparent}
+.btn.small{font-size:13px; padding:8px 10px}
 select.btn{appearance:none}
 
 /* Segmented toggle */
@@ -65,11 +66,11 @@ main{padding:18px clamp(10px,2vw,28px) 28px}
 .view{display:none}
 .view.active{display:block}
 
-/* Scroll view + arrows */
+/* Scroll view + redesigned arrows */
 .scroller-wrap{position:relative}
 .nav-arrow{
   position:absolute; top:50%; transform:translateY(-50%); z-index:5;
-  width:48px; height:48px; border-radius:9999px; display:grid; place-items:center;
+  width:46px; height:46px; border-radius:12px; display:grid; place-items:center;
   border:1px solid rgba(255,255,255,.08);
   background:
     radial-gradient(120% 120% at 50% -10%, rgba(255,255,255,.08), rgba(255,255,255,.03)),
@@ -77,13 +78,11 @@ main{padding:18px clamp(10px,2vw,28px) 28px}
   backdrop-filter: blur(8px);
   cursor:pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35);
 }
+.nav-arrow svg{display:block}
 .nav-arrow:hover{transform:translateY(-50%) scale(1.03)}
 .nav-arrow:active{transform:translateY(-50%) scale(.98)}
 .nav-arrow.left{left:8px}
 .nav-arrow.right{right:8px}
-.chev{display:inline-block;width:14px;height:14px;border-top:3px solid var(--fg);border-right:3px solid var(--fg)}
-.chev-left{transform:rotate(-135deg)}
-.chev-right{transform:rotate(45deg)}
 
 /* Larger cards for Scroll; hide scrollbar */
 .scroller{
@@ -135,7 +134,7 @@ main{padding:18px clamp(10px,2vw,28px) 28px}
 dialog#statsModal{border:none;padding:0;background:transparent}
 dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(8,10,14,.55)}
 .stats-card{max-width:720px;width:min(92vw,720px);border:none;border-radius:16px;padding:18px 18px 22px;background:#10151b;color:var(--fg);box-shadow:var(--shadow);position:relative}
-.stats-close{position:absolute;right:12px;top:10px;background:transparent;border:0;color:var(--fg);font-size:24px;cursor:pointer}
+.stats-close{position:absolute;right:12px;top:10px}
 .stats-body{display:grid;gap:14px}
 .stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .stat-tile{background:#111923;border:1px solid var(--border);border-radius:12px;padding:12px;display:grid;gap:6px;text-align:center}
