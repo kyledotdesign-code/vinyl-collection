@@ -1,8 +1,9 @@
-/* Vinyl Collection — app.js (full drop-in)
-   - Starts scroller at first card
-   - Mobile no hidden leading items
-   - Uses /api/art for Apple/Wiki/direct images (server-side)
-   - Fast-ish parallel hydrate with throttling
+/* Vinyl Collection — app.js (safe drop-in)
+   - Waits for DOM before running (fixes null .content error)
+   - Auto-creates <template id="cardTpl"> if missing
+   - Starts scroller at the very first card
+   - Uses /api/art for reliable cover art (Apple/Wiki/direct/itunes fallback)
+   - Progressive rendering with light throttling for faster perceived load
 */
 
 const SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
@@ -15,32 +16,40 @@ const HEADER_ALIASES = {
   cover:  ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"]
 };
 
-// ---- Elements (match your index.html ids) ----
+// global element bag (filled in init)
+let els = {};
+
+// ---------- tiny CSV parser (header row → objects) ----------
+function parseCSV(text){
+  const rows = [];
+  let cur = [''];
+  let inQ = false;
+  for (let i=0;i<text.length;i++){
+    const c=text[i];
+    if(c === '"'){
+      if(inQ && text[i+1] === '"'){ cur[cur.length-1] += '"'; i++; }
+      else inQ = !inQ;
+    }else if(c === ',' && !inQ){
+      cur.push('');
+    }else if((c === '\n' || c === '\r') && !inQ){
+      rows.push(cur); cur=[''];
+      if(c==='\r' && text[i+1]==='\n') i++;
+    }else{
+      cur[cur.length-1] += c;
+    }
+  }
+  if(cur.length>1 || cur[0] !== '') rows.push(cur);
+  const header = (rows.shift()||[]).map(h => (h||"").trim().toLowerCase());
+  return rows.filter(r => r.some(x=>x && x.trim())).map(r=>{
+    const o={}; header.forEach((h,idx)=> o[h] = (r[idx]||'').trim()); return o;
+  });
+}
+
+// ---------- helpers ----------
 const $  = (s, r=document) => r.querySelector(s);
-const els = {
-  search:     $('#search'),
-  viewScroll: $('#view-scroll'),
-  viewGrid:   $('#view-grid'),
-  sort:       $('#sort'),
-  shuffle:    $('#shuffle'),
-  sheetLink:  $('#sheetLink'),
-  statsBtn:   $('#statsBtn'),
-
-  scroller:   $('#scroller'),
-  grid:       $('#grid'),
-  prev:       $('#scrollPrev'),
-  next:       $('#scrollNext'),
-
-  statsModal: $('#statsModal'),
-  statsBody:  $('#statsBody'),
-  cardTpl:    $('#cardTpl')
-};
-
-// ---- Utilities ----
-function normalizeHeader(h){ return (h||"").trim().toLowerCase(); }
 function pick(obj, keys){
   for(const k of keys){
-    const hit = Object.keys(obj).find(h => normalizeHeader(h) === k);
+    const hit = Object.keys(obj).find(h => (h||"").trim().toLowerCase() === k);
     if(hit && String(obj[hit]).trim()) return String(obj[hit]).trim();
   }
   return "";
@@ -75,7 +84,38 @@ async function resolveArt(artist, title, coverHint){
   }
 }
 
-// ---- State ----
+// ---------- template safety ----------
+function ensureTemplate(){
+  let tpl = $('#cardTpl');
+  if(!tpl){
+    tpl = document.createElement('template');
+    tpl.id = 'cardTpl';
+    tpl.innerHTML = `
+      <article class="card" role="listitem">
+        <div class="sleeve" aria-live="polite">
+          <div class="face front">
+            <img class="cover" alt="" loading="lazy" referrerpolicy="no-referrer">
+          </div>
+          <div class="face back">
+            <div class="meta">
+              <h3 class="title"></h3>
+              <p class="artist"></p>
+              <p class="genre"></p>
+            </div>
+          </div>
+        </div>
+        <div class="caption">
+          <div class="caption-title"></div>
+          <div class="caption-artist"></div>
+        </div>
+      </article>
+    `;
+    document.body.appendChild(tpl);
+  }
+  return tpl;
+}
+
+// ---------- state ----------
 const state = {
   all: [],
   filtered: [],
@@ -83,68 +123,10 @@ const state = {
   sortKey: 'title'
 };
 
-// ---- CSV load & hydrate (with light throttling) ----
-async function loadFromSheet(){
-  const text = await fetch(SHEET_CSV, { cache: "no-store" }).then(r => r.text());
-  // Simple robust CSV parser (header:true)
-  const rows = parseCSV(text);
-
-  // Normalize + pick columns
-  const base = rows.map(r=>{
-    const title   = pick(r, HEADER_ALIASES.title);
-    const artist  = pick(r, HEADER_ALIASES.artist);
-    const genre   = pick(r, HEADER_ALIASES.genre);
-    const notes   = pick(r, HEADER_ALIASES.notes);
-    const coverRaw= pick(r, HEADER_ALIASES.cover);
-    return { title, artist, genre, notes, coverRaw, cover:"" };
-  }).filter(x => x.title || x.artist);
-
-  // Hydrate artwork/genre (throttle concurrency to avoid spikes)
-  const CONCURRENCY = 10;
-  const out = [];
-  let i = 0;
-  async function workOne(rec){
-    let cover = "";
-    let genre = rec.genre || "";
-
-    if(rec.coverRaw){
-      if(looksLikeImage(rec.coverRaw)){
-        cover = wsrv(rec.coverRaw);
-      } else if (/wikipedia\.org\/wiki\//i.test(rec.coverRaw)){
-        cover = await fromWikipediaPage(rec.coverRaw);
-      }
-    }
-    if(!cover || !genre){
-      const { cover:c2, genre:g2 } = await resolveArt(rec.artist, rec.title, rec.coverRaw);
-      cover = cover || c2;
-      genre = genre || g2;
-    }
-
-    out.push({ ...rec, cover, genre });
-  }
-  async function runner(){
-    while(i < base.length){
-      const start = i;
-      const batch = base.slice(start, start+CONCURRENCY);
-      i += CONCURRENCY;
-      await Promise.all(batch.map(workOne));
-      // render progressively for perceived speed
-      state.all = out.slice();
-      state.filtered = state.all.slice();
-      applySort();
-      render(true); // progressive render
-    }
-  }
-  await runner();
-
-  // final render, ensure scroll sits at first item
-  render();
-  snapToStart();
-}
-
-// ---- Renderers ----
+// ---------- rendering ----------
 function createCard(rec){
-  const tpl = els.cardTpl.content.cloneNode(true);
+  const tplEl = ensureTemplate();
+  const tpl = tplEl.content.cloneNode(true);       // << never null now
   const art = tpl.querySelector('.cover');
   const t   = tpl.querySelector('.title');
   const a   = tpl.querySelector('.artist');
@@ -163,11 +145,11 @@ function createCard(rec){
   capT.textContent = title;
   capA.textContent = artist;
 
-  // Optional notes (smaller, muted)
   if(rec.notes){
     const meta = tpl.querySelector('.meta');
     const p = document.createElement('p');
     p.className = 'notes';
+    p.style.cssText = 'margin-top:10px;color:#9aa6b6;font-size:13px';
     p.textContent = rec.notes;
     meta.appendChild(p);
   }
@@ -182,7 +164,6 @@ function renderScroll(progressive=false){
   const frag = document.createDocumentFragment();
   state.filtered.forEach(rec => frag.appendChild(createCard(rec)));
   els.scroller.replaceChildren(frag);
-  // Always ensure we start at first card
   snapToStart();
 }
 function renderGrid(){
@@ -204,33 +185,16 @@ function render(progressive=false){
   }
 }
 function snapToStart(){
-  // Remove any hidden-leading gap effects. Start at leftmost.
   if(els.scroller){
     els.scroller.scrollTo({ left: 0, behavior: 'auto' });
   }
 }
 function toggleArrows(show){
-  $('#scrollPrev').style.display = show ? "" : "none";
-  $('#scrollNext').style.display = show ? "" : "none";
+  if(els.prev) els.prev.style.display = show ? "" : "none";
+  if(els.next) els.next.style.display = show ? "" : "none";
 }
 
-// ---- Search / Sort / Shuffle ----
-els.search.addEventListener('input', e=>{
-  const q = e.target.value.trim().toLowerCase();
-  state.filtered = state.all.filter(r=>{
-    const hay = `${r.title} ${r.artist} ${r.genre} ${r.notes}`.toLowerCase();
-    return hay.includes(q);
-  });
-  applySort();
-  render();
-});
-
-function setSortKey(key){
-  state.sortKey = key;
-  // keep the <select> text centered by just selecting the option
-  if(els.sort) els.sort.value = key;
-  applySort(); render();
-}
+// ---------- sorting / search / shuffle ----------
 function applySort(){
   const k = state.sortKey;
   state.filtered.sort((a,b)=>{
@@ -239,35 +203,8 @@ function applySort(){
     return A.localeCompare(B);
   });
 }
-els.sort.addEventListener('change', ()=> setSortKey(els.sort.value || 'title'));
-els.shuffle.addEventListener('click', ()=>{
-  for(let i=state.filtered.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
-  }
-  render();
-});
 
-// ---- View toggles ----
-els.viewScroll.addEventListener('click', ()=>{
-  state.view = 'scroll';
-  els.viewScroll.classList.add('active');
-  els.viewGrid.classList.remove('active');
-  render();
-});
-els.viewGrid.addEventListener('click', ()=>{
-  state.view = 'grid';
-  els.viewGrid.classList.add('active');
-  els.viewScroll.classList.remove('active');
-  render();
-});
-
-// ---- Arrows (scroll by ~90% width) ----
-function smoothScrollBy(px){ els.scroller?.scrollBy({ left: px, behavior: 'smooth' }); }
-els.prev.addEventListener('click', ()=> smoothScrollBy(-Math.round(els.scroller.clientWidth*0.9)));
-els.next.addEventListener('click', ()=> smoothScrollBy( Math.round(els.scroller.clientWidth*0.9)));
-
-// ---- Stats ----
+// ---------- stats ----------
 function buildStats(recs){
   const total = recs.length;
   const artistMap = new Map();
@@ -332,33 +269,132 @@ function openStats(){
 
   els.statsModal.showModal();
 }
-els.statsBtn.addEventListener('click', openStats);
 
-// ---- Kickoff ----
-loadFromSheet().catch(console.error);
+// ---------- data load ----------
+async function loadFromSheet(){
+  const text = await fetch(SHEET_CSV, { cache: "no-store" }).then(r => r.text());
+  const rows = parseCSV(text);
 
-// ---- tiny CSV parser (header row → objects) ----
-function parseCSV(text){
-  const rows = [];
-  let cur = [''];
-  let inQ = false;
-  for (let i=0;i<text.length;i++){
-    const c=text[i];
-    if(c === '"'){
-      if(inQ && text[i+1] === '"'){ cur[cur.length-1] += '"'; i++; }
-      else inQ = !inQ;
-    }else if(c === ',' && !inQ){
-      cur.push('');
-    }else if((c === '\n' || c === '\r') && !inQ){
-      rows.push(cur); cur=[''];
-      if(c==='\r' && text[i+1]==='\n') i++;
-    }else{
-      cur[cur.length-1] += c;
+  const base = rows.map(r=>{
+    const title   = pick(r, HEADER_ALIASES.title);
+    const artist  = pick(r, HEADER_ALIASES.artist);
+    const genre   = pick(r, HEADER_ALIASES.genre);
+    const notes   = pick(r, HEADER_ALIASES.notes);
+    const coverRaw= pick(r, HEADER_ALIASES.cover);
+    return { title, artist, genre, notes, coverRaw, cover:"" };
+  }).filter(x => x.title || x.artist);
+
+  // Hydrate artwork/genre with throttling and progressive renders
+  const CONCURRENCY = 10;
+  const out = [];
+  let i = 0;
+
+  async function workOne(rec){
+    let cover = "";
+    let genre = rec.genre || "";
+
+    if(rec.coverRaw){
+      if(looksLikeImage(rec.coverRaw)){
+        cover = wsrv(rec.coverRaw);
+      } else if (/wikipedia\.org\/wiki\//i.test(rec.coverRaw)){
+        cover = await fromWikipediaPage(rec.coverRaw);
+      }
+    }
+    if(!cover || !genre){
+      const { cover:c2, genre:g2 } = await resolveArt(rec.artist, rec.title, rec.coverRaw);
+      cover = cover || c2;
+      genre = genre || g2;
+    }
+
+    out.push({ ...rec, cover, genre });
+  }
+
+  async function runner(){
+    while(i < base.length){
+      const batch = base.slice(i, i+CONCURRENCY);
+      i += CONCURRENCY;
+      await Promise.all(batch.map(workOne));
+      // progressive update
+      state.all = out.slice();
+      state.filtered = state.all.slice();
+      applySort();
+      render(true);
     }
   }
-  if(cur.length>1 || cur[0] !== '') rows.push(cur);
-  const header = (rows.shift()||[]).map(normalizeHeader);
-  return rows.filter(r => r.some(x=>x && x.trim())).map(r=>{
-    const o={}; header.forEach((h,idx)=> o[h] = (r[idx]||'').trim()); return o;
+
+  await runner();
+  render();
+  snapToStart(); // make sure we start at the very first one
+}
+
+// ---------- init (wait for DOM) ----------
+function init(){
+  els = {
+    search:     $('#search'),
+    viewScroll: $('#view-scroll'),
+    viewGrid:   $('#view-grid'),
+    sort:       $('#sort'),
+    shuffle:    $('#shuffle'),
+    sheetLink:  $('#sheetLink'),
+    statsBtn:   $('#statsBtn'),
+
+    scroller:   $('#scroller'),
+    grid:       $('#grid'),
+    prev:       $('#scrollPrev'),
+    next:       $('#scrollNext'),
+
+    statsModal: $('#statsModal'),
+    statsBody:  $('#statsBody')
+  };
+
+  ensureTemplate(); // guarantees #cardTpl exists
+
+  // events
+  if(els.search){
+    els.search.addEventListener('input', e=>{
+      const q = e.target.value.trim().toLowerCase();
+      state.filtered = state.all.filter(r=>{
+        const hay = `${r.title} ${r.artist} ${r.genre} ${r.notes}`.toLowerCase();
+        return hay.includes(q);
+      });
+      applySort(); render();
+    });
+  }
+
+  if(els.sort)   els.sort.addEventListener('change', ()=> { state.sortKey = els.sort.value || 'title'; applySort(); render(); });
+  if(els.shuffle)els.shuffle.addEventListener('click', ()=>{
+    for(let i=state.filtered.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
+    }
+    render();
   });
+
+  if(els.viewScroll) els.viewScroll.addEventListener('click', ()=>{
+    state.view = 'scroll';
+    els.viewScroll.classList.add('active');
+    els.viewGrid?.classList.remove('active');
+    render();
+  });
+  if(els.viewGrid) els.viewGrid.addEventListener('click', ()=>{
+    state.view = 'grid';
+    els.viewGrid.classList.add('active');
+    els.viewScroll?.classList.remove('active');
+    render();
+  });
+
+  if(els.prev) els.prev.addEventListener('click', ()=> els.scroller?.scrollBy({ left: -Math.round(els.scroller.clientWidth*0.9), behavior:'smooth' }));
+  if(els.next) els.next.addEventListener('click', ()=> els.scroller?.scrollBy({ left:  Math.round(els.scroller.clientWidth*0.9), behavior:'smooth' }));
+
+  if(els.statsBtn) els.statsBtn.addEventListener('click', openStats);
+
+  // go
+  loadFromSheet().catch(console.error);
+}
+
+// run when DOM is ready (prevents null .content)
+if (document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
 }
