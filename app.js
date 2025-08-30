@@ -1,5 +1,5 @@
 /* -----------------------------------
-   Vinyl Collection — app.js (template-free)
+   Vinyl Collection — app.js (resilient art + sticky UI)
    Sheet CSV:
    https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
 ----------------------------------- */
@@ -43,20 +43,22 @@ const state = {
   sortKey: "title",
 };
 
+// Simple cache for resolved cover images to avoid repeat lookups
+const artCache = new Map(); // key: "artist|title" -> url or "none"
+
 // 3) CSV helpers
 function pick(obj, names){
   const keys = Object.keys(obj);
   for (const n of names){
-    const k = keys.find(h => h.trim().toLowerCase() === n);
+    const k = keys.find(h => h?.trim?.().toLowerCase() === n);
     if (k && String(obj[k]).trim()) return String(obj[k]).trim();
   }
   return "";
 }
 
-// Using PapaParse from index.html
+// PapaParse (included via <script> in index.html)
 function parseCSV(text){
-  const rows = Papa.parse(text, {header:true, skipEmptyLines:true}).data;
-  return rows;
+  return Papa.parse(text, {header:true, skipEmptyLines:true}).data;
 }
 
 // 4) Artwork helpers
@@ -69,16 +71,51 @@ function wsrv(url){
 }
 
 // Wikipedia page → lead image
-async function fromWikipediaPage(pageUrl){
-  const m = pageUrl.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i);
-  if(!m) return "";
+async function wikiSummaryImage(pageTitle){
   try{
-    const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(decodeURIComponent(m[1]))}`);
+    const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`);
     if(!r.ok) return "";
     const j = await r.json();
     const src = j?.originalimage?.source || j?.thumbnail?.source;
     return src ? wsrv(src) : "";
   }catch{ return ""; }
+}
+
+// Wikipedia search → best page image (CORS-safe via origin=*)
+async function wikiSearchCover(artist, title){
+  const q = `${title} ${artist} album`;
+  try{
+    const url = `https://en.wikipedia.org/w/api.php?origin=*&action=query&format=json&prop=pageimages&piprop=original|thumbnail&pithumbsize=1000&generator=search&gsrlimit=1&gsrsearch=${encodeURIComponent(q)}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if(!res.ok) return "";
+    const j = await res.json();
+    const pages = j?.query?.pages;
+    if(!pages) return "";
+    const page = Object.values(pages)[0];
+    const src = page?.original?.source || page?.thumbnail?.source;
+    return src ? wsrv(src) : "";
+  }catch{ return ""; }
+}
+
+// Try to resolve artwork using (1) given URL, (2) wiki page, (3) wiki search
+async function resolveCover({ coverIn, artist, title }){
+  const key = `${(artist||"").toLowerCase()}|${(title||"").toLowerCase()}`;
+  if (artCache.has(key)) return artCache.get(key) || "";
+
+  let cover = "";
+  if (coverIn){
+    if (looksLikeImage(coverIn)) cover = wsrv(coverIn);
+    else if (/wikipedia\.org\/wiki\//i.test(coverIn)){
+      const page = decodeURIComponent(coverIn.split("/wiki/")[1]||"").split(/[?#]/)[0];
+      cover = await wikiSummaryImage(page);
+    }
+  }
+  if (!cover){
+    cover = await wikiSearchCover(artist||"", title||"");
+  }
+
+  artCache.set(key, cover || "none");
+  return cover || "";
 }
 
 // 5) Load data
@@ -98,18 +135,12 @@ async function loadFromSheet(){
     for (const r of rows){
       const title   = pick(r, HEADER_ALIASES.title);
       const artist  = pick(r, HEADER_ALIASES.artist);
-      const genre   = pick(r, HEADER_ALIASES.genre);  // requires a Genre column in your sheet
+      const genre   = pick(r, HEADER_ALIASES.genre);  // add a "Genre" column in your sheet to populate this
       const notes   = pick(r, HEADER_ALIASES.notes);
       const coverIn = pick(r, HEADER_ALIASES.cover);
-
       if(!title && !artist) continue;
 
-      let cover = "";
-      if (coverIn){
-        if (looksLikeImage(coverIn)) cover = wsrv(coverIn);
-        else if (/wikipedia\.org\/wiki\//i.test(coverIn)) cover = await fromWikipediaPage(coverIn);
-      }
-
+      const cover = await resolveCover({ coverIn, artist, title });
       list.push({ title, artist, genre, notes, cover });
     }
 
@@ -122,7 +153,7 @@ async function loadFromSheet(){
   }
 }
 
-// 6) Card creation (no <template> needed)
+// 6) Card creation (template-free)
 function createCard(rec){
   const title  = rec.title  || "Untitled";
   const artist = rec.artist || "Unknown Artist";
@@ -135,6 +166,7 @@ function createCard(rec){
   sleeve.className = "sleeve";
   sleeve.setAttribute("aria-live","polite");
 
+  // FRONT
   const faceFront = document.createElement("div");
   faceFront.className = "face front";
 
@@ -145,10 +177,20 @@ function createCard(rec){
   img.alt = `${title} — ${artist}`;
   if (rec.cover) img.src = rec.cover;
 
+  // If the given image fails, try wiki search once
+  img.addEventListener("error", async () => {
+    if (img.dataset.retry === "1") return; // only once
+    img.dataset.retry = "1";
+    const fallback = await wikiSearchCover(artist, title);
+    if (fallback) img.src = fallback;
+  });
+
   faceFront.appendChild(img);
 
+  // BACK
   const faceBack = document.createElement("div");
   faceBack.className = "face back";
+
   const meta = document.createElement("div");
   meta.className = "meta";
 
@@ -164,20 +206,22 @@ function createCard(rec){
   pGenre.className = "genre";
   pGenre.textContent = rec.genre ? `Genre: ${rec.genre}` : "";
 
+  meta.appendChild(h3);
+  meta.appendChild(pArtist);
+  meta.appendChild(pGenre);
+
   if (rec.notes){
     const pNotes = document.createElement("p");
-    pNotes.style.marginTop = "10px";
-    pNotes.style.whiteSpace = "pre-wrap";
+    pNotes.className = "notes";
     pNotes.textContent = rec.notes;
-    meta.appendChild(h3); meta.appendChild(pArtist); meta.appendChild(pGenre); meta.appendChild(pNotes);
-  } else {
-    meta.appendChild(h3); meta.appendChild(pArtist); meta.appendChild(pGenre);
+    meta.appendChild(pNotes);
   }
-  faceBack.appendChild(meta);
 
+  faceBack.appendChild(meta);
   sleeve.appendChild(faceFront);
   sleeve.appendChild(faceBack);
 
+  // CAPTION
   const caption = document.createElement("div");
   caption.className = "caption";
   const capT = document.createElement("div");
@@ -191,7 +235,7 @@ function createCard(rec){
   article.appendChild(sleeve);
   article.appendChild(caption);
 
-  // Flip on click
+  // Flip
   article.addEventListener("click", ()=> article.classList.toggle("flipped"));
 
   return article;
@@ -308,6 +352,20 @@ function buildStats(recs){
   return { total, uniqArtists: artistMap.size, topArtists, topGenres };
 }
 
+function ensureStatsCloseX(){
+  if (!el.statsModal) return;
+  const card = el.statsModal.querySelector(".stats-card");
+  if (!card) return;
+  if (card.querySelector(".stats-close")) return; // already there
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "stats-close";
+  btn.setAttribute("aria-label","Close");
+  btn.textContent = "×";
+  btn.addEventListener("click", ()=> el.statsModal.close());
+  card.prepend(btn);
+}
+
 function openStats(){
   if (!el.statsBody) return;
   const s = buildStats(state.filtered);
@@ -350,6 +408,7 @@ function openStats(){
     el.statsBody.appendChild(p);
   }
 
+  ensureStatsCloseX();
   el.statsModal?.showModal();
 }
 el.statsBtn?.addEventListener("click", openStats);
