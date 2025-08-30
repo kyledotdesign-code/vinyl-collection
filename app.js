@@ -412,3 +412,46 @@ function buildStats(recs){
 function updateStats(){
   if (!ui.statsBody) return;
   const s = buildStats(state.filtered);
+  ui.statsBody.innerHTML = "";
+
+  const grid = document.createElement("div");
+  grid.className = "stat-grid";
+  grid.innerHTML = `
+    <div class="stat-tile"><div>Total Albums</div><div class="stat-big">${s.total}</div></div>
+    <div class="stat-tile"><div>Unique Artists</div><div class="stat-big">${s.uniqArtists}</div></div>
+    <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${s.topGenres.length}</div></div>
+  `;
+  ui.statsBody.appendChild(grid);
+
+  if (s.topArtists.length){
+    const h = document.createElement("h3"); h.textContent = "Top Artists"; ui.statsBody.appendChild(h);
+    const chips = document.createElement("div"); chips.className = "chips";
+    s.topArtists.forEach(([name,n])=>{
+      const c=document.createElement("span");
+      c.className="chip";
+      c.textContent=`${name} • ${n}`;
+      chips.appendChild(c);
+    });
+    ui.statsBody.appendChild(chips);
+  }
+
+  if (s.topGenres.length){
+    const h = document.createElement("h3"); h.textContent = "Top Genres"; ui.statsBody.appendChild(h);
+    const chips = document.createElement("div"); chips.className = "chips";
+    s.topGenres.forEach(([g,n])=>{
+      const c=document.createElement("span");
+      c.className="chip";
+      c.textContent=`${g} • ${n}`;
+      chips.appendChild(c);
+    });
+    ui.statsBody.appendChild(chips);
+  }
+}
+ui.statsBtn?.addEventListener("click", ()=>{
+  updateStats();
+  ui.statsModal?.showModal();
+});
+ui.statsModal?.querySelector(".stats-close")?.addEventListener("click", ()=> ui.statsModal.close());
+
+// 10) Kickoff
+loadSheet();
