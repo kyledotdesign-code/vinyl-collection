@@ -1,9 +1,9 @@
 /* -----------------------------------
-   Vinyl Collection — TURBO STATIC v3.1
-   - Direct image URLs use wsrv.nl (low→high)
-   - Wikipedia page URLs resolved lazily on view
-   - Solid fallback placeholder (no broken icons)
-   - SWR cache + batch rendering for speed
+   Vinyl Collection — TURBO STATIC v3.2
+   - No sentinel (no blank tile). Tail observer instead.
+   - White arrows handled by CSS (see below).
+   - Lazy low→high images + Wikipedia on view
+   - Solid placeholder instead of broken icons
 ----------------------------------- */
 
 // 0) Config
@@ -18,7 +18,7 @@ const HEADER_ALIASES = {
   cover:  ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"]
 };
 
-// tiny transparent pixel so browsers don’t show a broken icon
+// 1×1 transparent pixel so browsers never show a broken icon
 const BLANK = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
 
 // 1) Elements
@@ -89,15 +89,13 @@ function parseCSV(text){
   return { header, data };
 }
 
-// 4) Images & caching
+// 4) Images & caching helpers
 function looksLikeImage(u){ return /\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(u||""); }
 function wsrv(url, w=800){
   if(!url) return "";
   const cleaned = url.replace(/^https?:\/\//,"");
   return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+cleaned)}&w=${w}&h=${w}&fit=cover&output=webp&q=82`;
 }
-
-// Nice monogram placeholder as inline SVG
 function placeholderDataURI(title, artist){
   const t = (title||"").trim();
   const a = (artist||"").trim();
@@ -105,20 +103,18 @@ function placeholderDataURI(title, artist){
     .split(/\s+/).slice(0,2).map(s=>s[0]).join("").toUpperCase() || "♪";
   const svg = `
   <svg xmlns="http://www.w3.org/2000/svg" width="820" height="820">
-    <defs>
-      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#141b28"/>
-        <stop offset="1" stop-color="#0c1220"/>
-      </linearGradient>
-    </defs>
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#141b28"/><stop offset="1" stop-color="#0c1220"/>
+    </linearGradient></defs>
     <rect width="100%" height="100%" fill="url(#g)"/>
     <circle cx="410" cy="410" r="320" fill="#0e172b" opacity="0.65"/>
     <text x="50%" y="55%" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-          font-weight="800" font-size="180" fill="#cfe2ff" opacity=".9">${initials}</text>
+          font-weight="800" font-size="180" fill="#ffffff" opacity=".85">${initials}</text>
   </svg>`;
   return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
 }
 
+// LocalStorage: sheet
 const LS_SHEET = "vinylSheetV2";
 function cacheSetSheet(raw){ try{ localStorage.setItem(LS_SHEET, raw); }catch{} }
 function cacheGetSheet(){ try{ return localStorage.getItem(LS_SHEET) || ""; }catch{ return ""; } }
@@ -134,7 +130,6 @@ async function fetchWikiImage(title){
   if (wikiMem.has(title)) return wikiMem.get(title);
   const cached = wikiGetLS(title);
   if (cached){ wikiMem.set(title, cached); return cached; }
-
   const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
   try{
     const r = await fetch(url);
@@ -152,7 +147,7 @@ async function fetchWikiImage(title){
   }
 }
 
-// 5) Load sheet: SWR
+// 5) Load sheet (SWR)
 async function loadSheet(){
   const cached = cacheGetSheet();
   if (cached){
@@ -181,8 +176,8 @@ function hydrateFromCSV(text){
 
     let low="", high="", wiki="";
     if (looksLikeImage(coverHint)){
-      low  = wsrv(coverHint, 240);   // small
-      high = wsrv(coverHint, 820);   // crisp
+      low  = wsrv(coverHint, 240);
+      high = wsrv(coverHint, 820);
     } else if (/wikipedia\.org\/wiki\//i.test(coverHint)){
       const m = coverHint.match(/\/wiki\/([^?#]+)/i);
       wiki = m ? decodeURIComponent(m[1]).replace(/_/g," ") : "";
@@ -196,7 +191,7 @@ function hydrateFromCSV(text){
   applySort();
 }
 
-// 6) Image IO (lazy: low → high + Wikipedia on-demand)
+// 6) Image lazying (low→high + on-view Wikipedia)
 let imgIO;
 function ensureImgObserver(root){
   if (imgIO) imgIO.disconnect();
@@ -205,7 +200,7 @@ function ensureImgObserver(root){
       if (!entry.isIntersecting) return;
       const img = entry.target;
 
-      // If we don’t have sources yet but we DO have a wiki title, resolve it now
+      // Wikipedia resolve on demand
       if (!img.dataset.srcLow && !img.dataset.srcHigh && img.dataset.wiki && !img.dataset.fetching){
         img.dataset.fetching = "1";
         const res = await fetchWikiImage(img.dataset.wiki);
@@ -216,14 +211,14 @@ function ensureImgObserver(root){
       const low  = img.dataset.srcLow;
       const high = img.dataset.srcHigh;
 
-      // set low first
+      // show low first
       if (low && !img.dataset.didLow){
         img.src = low;
         img.dataset.didLow = "1";
         img.onload = ()=> img.classList.remove("skeleton");
       }
 
-      // then upgrade to high
+      // upgrade to high
       if (high && !img.dataset.didHigh){
         const swap = new Image();
         swap.decoding = "async";
@@ -270,22 +265,16 @@ function createCard(rec, index){
   img.fetchPriority = index < 6 ? "high" : "low";
   img.referrerPolicy = "no-referrer";
   img.alt = `${title} — ${artist}`;
+  img.src = BLANK; // never show broken icon
 
-  // Avoid broken icon before lazy-load
-  img.src = BLANK;
-
-  // Provide sources for lazy loader
   if (rec.low)   img.dataset.srcLow = rec.low;
   if (rec.high)  img.dataset.srcHigh = rec.high;
   if (!rec.low && !rec.high && rec.wiki) img.dataset.wiki = rec.wiki;
 
-  // If absolutely nothing to load, show a nice placeholder immediately
   if (!rec.low && !rec.high && !rec.wiki){
     img.src = placeholderDataURI(title, artist);
     img.classList.remove("skeleton");
   }
-
-  // If any load fails at any point, fall back to placeholder
   img.addEventListener("error", ()=>{
     img.src = placeholderDataURI(title, artist);
     img.classList.remove("skeleton");
@@ -360,14 +349,14 @@ function renderFresh(){
     $("#gridView").classList.remove("active");
     toggleArrows(true);
     renderBatch(ui.scroller);
-    attachSentinel(ui.scroller);
+    observeTail(ui.scroller);
     ensureImgObserver(ui.scroller);
   } else {
     $("#gridView").classList.add("active");
     $("#scrollView").classList.remove("active");
     toggleArrows(false);
     renderBatch(ui.grid);
-    attachSentinel(ui.grid);
+    observeTail(ui.grid);
     ensureImgObserver(ui.grid);
   }
 }
@@ -387,21 +376,24 @@ function renderBatch(container){
   state.renderedCount = end;
 }
 
-let sentinelIO;
-function attachSentinel(container){
-  const sentinel = document.createElement("div");
-  sentinel.style.height = "1px";
-  container.appendChild(sentinel);
+// Tail observer (no sentinel → no empty column)
+let tailIO;
+function observeTail(container){
+  if (tailIO) tailIO.disconnect();
 
-  if (sentinelIO) sentinelIO.disconnect();
-  sentinelIO = new IntersectionObserver((entries)=>{
+  tailIO = new IntersectionObserver((entries)=>{
     entries.forEach(e=>{
       if (!e.isIntersecting) return;
+      // unobserve current tail, render more, observe new tail
+      tailIO.unobserve(e.target);
       renderBatch(container);
+      const last = container.querySelector(".card:last-child");
+      if (last) tailIO.observe(last);
     });
   }, { root: state.view === "scroll" ? ui.scroller : null, rootMargin: "800px" });
 
-  sentinelIO.observe(sentinel);
+  const last = container.querySelector(".card:last-child");
+  if (last) tailIO.observe(last);
 }
 
 // 8) UI
