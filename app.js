@@ -148,23 +148,18 @@ async function fromWikipediaPage(pageUrl){
   }catch{ return ""; }
 }
 
-// Apple iTunes Search album art + primaryGenreName
-async function fromApple(artist, title){
-  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(`${artist} ${title}`)}&entity=album&limit=1`;
-  try{
+// replace the old fromApple() with this:
+async function resolveArt(artist, title, coverHint) {
+  const url = `/api/art?artist=${encodeURIComponent(artist || "")}&title=${encodeURIComponent(title || "")}&cover=${encodeURIComponent(coverHint || "")}`;
+  try {
     const r = await fetch(url, { cache: "no-store" });
-    const j = await r.json();
-    if(j.resultCount > 0){
-      const it = j.results[0];
-      const art = it.artworkUrl100?.replace(/100x100bb\.(?:jpg|png)/, "1000x1000bb.jpg");
-      return {
-        cover: art ? wsrv(art) : "",
-        genre: it.primaryGenreName || ""
-      };
-    }
-  }catch{}
-  return { cover:"", genre:"" };
+    if (!r.ok) return { cover: "", genre: "" };
+    return await r.json(); // { cover, genre }
+  } catch {
+    return { cover: "", genre: "" };
+  }
 }
+
 
 // ---- 5) Loader ----
 function showStatus(msg){
