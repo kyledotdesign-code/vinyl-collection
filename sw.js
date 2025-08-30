@@ -1,6 +1,4 @@
-// Basic SW to speed up repeat visits (cache static + images)
-const CACHE_NAME = "vinyl-cache-v1";
-const IMG_HOST = "wsrv.nl";
+const CACHE_NAME = "vinyl-static-v1";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
@@ -10,7 +8,6 @@ self.addEventListener("install", (e) => {
   );
   self.skipWaiting();
 });
-
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -19,12 +16,10 @@ self.addEventListener("activate", (e) => {
   );
   self.clients.claim();
 });
-
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-
-  // Cache-first for images from wsrv.nl (album art)
-  if (url.hostname.endsWith(IMG_HOST)) {
+  // Cache-first for wsrv.nl images
+  if (url.hostname.endsWith("wsrv.nl")) {
     e.respondWith(
       caches.match(e.request).then(hit =>
         hit || fetch(e.request).then(res => {
@@ -36,7 +31,6 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
-
   // Network-first for everything else
   e.respondWith(
     fetch(e.request).then(res => {
