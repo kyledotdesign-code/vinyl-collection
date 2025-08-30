@@ -41,58 +41,70 @@ body{
 }
 #search::placeholder{color:var(--muted)}
 
-/* ——— Buttons: Option B (solid, rounded) ——— */
+/* ——— Buttons: Soft-Slate Pills (neutral, rounded) ——— */
 :root{
-  --btn-bg: #3b82f6;          /* primary (you can tweak) */
-  --btn-bg-hover: #5a97fb;
-  --btn-bg-active: #2d6cdf;
-  --btn-outline: #2a344a;
+  --btn-bg: #1e2636;          /* base fill */
+  --btn-bg-grad: #141b2a;     /* subtle bottom shade */
+  --btn-bg-hover: #273149;    /* hover fill */
+  --btn-bg-active: #161d2b;   /* active/pressed */
+  --btn-border: rgba(255,255,255,.08);
+  --btn-text: #e9efff;
+  --btn-shadow: 0 6px 16px rgba(0,0,0,.35), inset 0 -1px 0 rgba(255,255,255,.06);
 }
 
-.btn-row{margin-top:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center}
+.btn-row{
+  margin-top:12px;
+  display:flex; flex-wrap:wrap; gap:10px;
+  align-items:center; justify-content:center;
+}
 
-/* make links look like buttons too */
-.btn, .seg-btn, a.btn{
-  text-decoration: none;
+/* links look like buttons too */
+.btn, .seg-btn, a.btn, select.btn{
+  text-decoration:none;
   display:inline-flex; align-items:center; justify-content:center;
   padding:10px 18px;
   border-radius:9999px;
-  border:none;
-  background:var(--btn-bg);
-  color:#fff;
+  border:1px solid var(--btn-border);
+  background:linear-gradient(180deg, var(--btn-bg), var(--btn-bg-grad));
+  color:var(--btn-text);
   font-weight:700; font-size:15px; letter-spacing:.2px;
-  box-shadow:0 6px 18px rgba(0,0,0,.25), inset 0 -2px 0 rgba(0,0,0,.15);
-  transition:transform .08s ease, filter .15s ease, background .15s ease;
+  box-shadow:var(--btn-shadow);
+  transition:transform .08s ease, background .15s ease, filter .15s ease;
 }
-.btn:hover, .seg-btn:hover, a.btn:hover{
-  transform:translateY(-1px); filter:brightness(1.02); background:var(--btn-bg-hover);
+.btn:hover, .seg-btn:hover, a.btn:hover, select.btn:hover{
+  transform:translateY(-1px);
+  background:linear-gradient(180deg, var(--btn-bg-hover), var(--btn-bg));
 }
-.btn:active, .seg-btn:active, a.btn:active{
-  transform:translateY(0); background:var(--btn-bg-active);
+.btn:active, .seg-btn:active, a.btn:active, select.btn:active{
+  transform:translateY(0);
+  background:linear-gradient(180deg, var(--btn-bg-active), var(--btn-bg));
 }
 
-/* Segmented toggle looks like pills with selected state solid */
-.segmented{
-  display:inline-flex; gap:8px; background:transparent; border:none; padding:0;
-}
-.seg-btn{
-  background:transparent; color:var(--fg);
-  border:1px solid var(--btn-outline);
-  box-shadow:none;
-}
-.seg-btn:hover{ background:rgba(255,255,255,.06); color:#fff; }
+/* Segmented: outline pills; active = filled */
+.segmented{display:inline-flex; gap:8px; background:transparent; border:none; padding:0}
+.seg-btn{background:transparent; box-shadow:none}
+.seg-btn:not(.active){border-color:var(--btn-border); color:var(--btn-text)}
 .seg-btn.active{
-  background:var(--btn-bg); color:#fff; border-color:transparent;
-  box-shadow:0 6px 18px rgba(0,0,0,.25), inset 0 -2px 0 rgba(0,0,0,.15);
+  background:linear-gradient(180deg, var(--btn-bg), var(--btn-bg-grad));
+  border-color:transparent; color:#fff; box-shadow:var(--btn-shadow);
 }
 
-/* Arrows: keep design, make chevrons white */
-.chev{
-  display:inline-block;width:14px;height:14px;
-  border-top:3px solid #fff; border-right:3px solid #fff;
+/* Style the <select> like a pill + custom caret */
+select.btn{
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  padding-right:38px; /* space for caret */
+  background-image: url("data:image/svg+xml;utf8,\
+  <svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%C3%B3c3d4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
 }
+select.btn::-ms-expand{ display:none; }
+
+/* Arrows: keep design, white chevrons */
+.chev{display:inline-block;width:14px;height:14px;border-top:3px solid #fff;border-right:3px solid #fff}
 .chev-left{transform:rotate(-135deg)}
 .chev-right{transform:rotate(45deg)}
+
 
 /* Segmented toggle */
 .segmented{display:inline-flex;background:#10161d;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px}
