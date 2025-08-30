@@ -1,8 +1,9 @@
 /* -----------------------------------
-   Vinyl Collection — TURBO STATIC v3
+   Vinyl Collection — TURBO STATIC v3.1
    - Direct image URLs use wsrv.nl (low→high)
    - Wikipedia page URLs resolved lazily on view
-   - SWR cache for the sheet + batch rendering
+   - Solid fallback placeholder (no broken icons)
+   - SWR cache + batch rendering for speed
 ----------------------------------- */
 
 // 0) Config
@@ -16,6 +17,9 @@ const HEADER_ALIASES = {
   notes:  ["notes","special notes","comment","comments","description"],
   cover:  ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"]
 };
+
+// tiny transparent pixel so browsers don’t show a broken icon
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
 
 // 1) Elements
 const $  = (s, r=document) => r.querySelector(s);
@@ -93,6 +97,28 @@ function wsrv(url, w=800){
   return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+cleaned)}&w=${w}&h=${w}&fit=cover&output=webp&q=82`;
 }
 
+// Nice monogram placeholder as inline SVG
+function placeholderDataURI(title, artist){
+  const t = (title||"").trim();
+  const a = (artist||"").trim();
+  const initials = (t || a || "♪")
+    .split(/\s+/).slice(0,2).map(s=>s[0]).join("").toUpperCase() || "♪";
+  const svg = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="820" height="820">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#141b28"/>
+        <stop offset="1" stop-color="#0c1220"/>
+      </linearGradient>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#g)"/>
+    <circle cx="410" cy="410" r="320" fill="#0e172b" opacity="0.65"/>
+    <text x="50%" y="55%" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+          font-weight="800" font-size="180" fill="#cfe2ff" opacity=".9">${initials}</text>
+  </svg>`;
+  return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+}
+
 const LS_SHEET = "vinylSheetV2";
 function cacheSetSheet(raw){ try{ localStorage.setItem(LS_SHEET, raw); }catch{} }
 function cacheGetSheet(){ try{ return localStorage.getItem(LS_SHEET) || ""; }catch{ return ""; } }
@@ -130,13 +156,8 @@ async function fetchWikiImage(title){
 async function loadSheet(){
   const cached = cacheGetSheet();
   if (cached){
-    try {
-      hydrateFromCSV(cached);
-      renderFresh();
-      requestIdleCallback?.(()=>updateStats());
-    } catch {}
+    try { hydrateFromCSV(cached); renderFresh(); requestIdleCallback?.(()=>updateStats()); } catch {}
   }
-
   try {
     const res  = await fetch(SHEET_CSV, { cache: "no-store" });
     const text = await res.text();
@@ -150,8 +171,7 @@ async function loadSheet(){
 }
 
 function hydrateFromCSV(text){
-  const parsed = parseCSV(text);
-  const rows = parsed.data;
+  const { data: rows } = parseCSV(text);
   const list = rows.map(r => {
     const title  = pick(r, HEADER_ALIASES.title);
     const artist = pick(r, HEADER_ALIASES.artist);
@@ -250,12 +270,25 @@ function createCard(rec, index){
   img.fetchPriority = index < 6 ? "high" : "low";
   img.referrerPolicy = "no-referrer";
   img.alt = `${title} — ${artist}`;
+
+  // Avoid broken icon before lazy-load
+  img.src = BLANK;
+
+  // Provide sources for lazy loader
   if (rec.low)   img.dataset.srcLow = rec.low;
   if (rec.high)  img.dataset.srcHigh = rec.high;
   if (!rec.low && !rec.high && rec.wiki) img.dataset.wiki = rec.wiki;
+
+  // If absolutely nothing to load, show a nice placeholder immediately
+  if (!rec.low && !rec.high && !rec.wiki){
+    img.src = placeholderDataURI(title, artist);
+    img.classList.remove("skeleton");
+  }
+
+  // If any load fails at any point, fall back to placeholder
   img.addEventListener("error", ()=>{
-    img.removeAttribute("src");
-    img.classList.add("skeleton");
+    img.src = placeholderDataURI(title, artist);
+    img.classList.remove("skeleton");
   });
 
   faceFront.appendChild(img);
