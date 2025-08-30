@@ -1,7 +1,10 @@
 /* -----------------------------------
-   Vinyl Collection — app.js (resilient art + sticky UI)
-   Sheet CSV:
-   https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
+   Vinyl Collection — FAST app.js
+   Speed tricks:
+   - Instant render from CSV
+   - Lazy cover lookups via IntersectionObserver
+   - Concurrency limit so the browser isn't flooded
+   - localStorage cache for covers (persists across visits)
 ----------------------------------- */
 
 // 0) Config
@@ -20,7 +23,7 @@ const HEADER_ALIASES = {
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 
-const el = {
+const ui = {
   search:     $("#search"),
   viewScroll: $("#view-scroll"),
   viewGrid:   $("#view-grid"),
@@ -43,10 +46,17 @@ const state = {
   sortKey: "title",
 };
 
-// Simple cache for resolved cover images to avoid repeat lookups
-const artCache = new Map(); // key: "artist|title" -> url or "none"
+// localStorage cache for covers
+const LS_KEY = "vinylArtCacheV1";
+let artCache = {};
+try { artCache = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { artCache = {}; }
+function cacheGet(key){ return artCache[key]; }
+function cacheSet(key, url){
+  artCache[key] = url || "none";
+  try { localStorage.setItem(LS_KEY, JSON.stringify(artCache)); } catch {}
+}
 
-// 3) CSV helpers
+// 3) Helpers
 function pick(obj, names){
   const keys = Object.keys(obj);
   for (const n of names){
@@ -55,22 +65,14 @@ function pick(obj, names){
   }
   return "";
 }
-
-// PapaParse (included via <script> in index.html)
-function parseCSV(text){
-  return Papa.parse(text, {header:true, skipEmptyLines:true}).data;
-}
-
-// 4) Artwork helpers
 function looksLikeImage(u){ return /\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(u||""); }
-
 function wsrv(url){
   if(!url) return "";
   const cleaned = url.replace(/^https?:\/\//,"");
   return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+cleaned)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
 
-// Wikipedia page → lead image
+// Wikipedia summary image for a page title
 async function wikiSummaryImage(pageTitle){
   try{
     const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`);
@@ -81,7 +83,7 @@ async function wikiSummaryImage(pageTitle){
   }catch{ return ""; }
 }
 
-// Wikipedia search → best page image (CORS-safe via origin=*)
+// Wikipedia search best image
 async function wikiSearchCover(artist, title){
   const q = `${title} ${artist} album`;
   try{
@@ -97,63 +99,83 @@ async function wikiSearchCover(artist, title){
   }catch{ return ""; }
 }
 
-// Try to resolve artwork using (1) given URL, (2) wiki page, (3) wiki search
-async function resolveCover({ coverIn, artist, title }){
+// Resolve cover lazily (with cache)
+async function resolveCoverLazy({ coverHint, artist, title }){
   const key = `${(artist||"").toLowerCase()}|${(title||"").toLowerCase()}`;
-  if (artCache.has(key)) return artCache.get(key) || "";
+  const cached = cacheGet(key);
+  if (cached && cached !== "none") return cached;
+  if (cached === "none") return ""; // known miss
 
   let cover = "";
-  if (coverIn){
-    if (looksLikeImage(coverIn)) cover = wsrv(coverIn);
-    else if (/wikipedia\.org\/wiki\//i.test(coverIn)){
-      const page = decodeURIComponent(coverIn.split("/wiki/")[1]||"").split(/[?#]/)[0];
-      cover = await wikiSummaryImage(page);
-    }
-  }
-  if (!cover){
-    cover = await wikiSearchCover(artist||"", title||"");
+
+  // If the hint is a direct image URL, use it immediately
+  if (coverHint && looksLikeImage(coverHint)) {
+    cover = wsrv(coverHint);
+  } else if (coverHint && /wikipedia\.org\/wiki\//i.test(coverHint)) {
+    // If hint is a wiki page, grab that page's lead image
+    const page = decodeURIComponent(coverHint.split("/wiki/")[1]||"").split(/[?#]/)[0];
+    cover = await wikiSummaryImage(page);
   }
 
-  artCache.set(key, cover || "none");
+  // If still nothing, try Wikipedia search
+  if (!cover) cover = await wikiSearchCover(artist||"", title||"");
+
+  cacheSet(key, cover || "none");
   return cover || "";
 }
 
-// 5) Load data
-async function loadFromSheet(){
-  try{
-    const res  = await fetch(SHEET_CSV, {cache:"no-store"});
-    const text = await res.text();
-
-    if (text.trim().startsWith("<")){
-      console.warn("Sheet link is not CSV. Make sure it ends with output=csv.");
-      return;
-    }
-
-    const rows = parseCSV(text);
-    const list = [];
-
-    for (const r of rows){
-      const title   = pick(r, HEADER_ALIASES.title);
-      const artist  = pick(r, HEADER_ALIASES.artist);
-      const genre   = pick(r, HEADER_ALIASES.genre);  // add a "Genre" column in your sheet to populate this
-      const notes   = pick(r, HEADER_ALIASES.notes);
-      const coverIn = pick(r, HEADER_ALIASES.cover);
-      if(!title && !artist) continue;
-
-      const cover = await resolveCover({ coverIn, artist, title });
-      list.push({ title, artist, genre, notes, cover });
-    }
-
-    state.all = list;
-    state.filtered = [...list];
-    applySort();
-    render();
-  }catch(e){
-    console.error(e);
+// Tiny concurrency limiter for image lookups
+const MAX_CONCURRENCY = 6;
+let active = 0;
+const q = [];
+function enqueue(task){
+  q.push(task);
+  drain();
+}
+function drain(){
+  while (active < MAX_CONCURRENCY && q.length){
+    const t = q.shift();
+    active++;
+    t().finally(()=>{ active--; drain(); });
   }
 }
 
-// 6) Card creation (template-free)
+// 4) Load the sheet and render immediately
+async function loadFromSheet(){
+  const res  = await fetch(SHEET_CSV, { cache: "no-store" });
+  const text = await res.text();
+  if (text.trim().startsWith("<")) {
+    console.warn("Sheet link is not CSV. Ensure it ends with output=csv.");
+    return;
+  }
+  const rows = Papa.parse(text, {header:true, skipEmptyLines:true}).data;
+
+  const list = rows.map(r => {
+    const title  = pick(r, HEADER_ALIASES.title);
+    const artist = pick(r, HEADER_ALIASES.artist);
+    const genre  = pick(r, HEADER_ALIASES.genre);
+    const notes  = pick(r, HEADER_ALIASES.notes);
+    const coverHint = pick(r, HEADER_ALIASES.cover);
+    const immediate = (coverHint && looksLikeImage(coverHint)) ? wsrv(coverHint) : ""; // immediate only for direct images
+    return { title, artist, genre, notes, coverHint, cover: immediate };
+  }).filter(x => x.title || x.artist);
+
+  state.all = list;
+  state.filtered = [...list];
+  applySort();
+  render();
+
+  // Kick a quick pre-warm for the first few items
+  requestIdleCallback?.(()=>prewarmCovers(8));
+}
+
+// Prewarm a handful of covers immediately (first N cards)
+function prewarmCovers(n=8){
+  const imgs = $$(".cover").slice(0, n);
+  imgs.forEach(img => ensureCover(img));
+}
+
+// 5) Card creation (no templates = fast)
 function createCard(rec){
   const title  = rec.title  || "Untitled";
   const artist = rec.artist || "Unknown Artist";
@@ -175,12 +197,21 @@ function createCard(rec){
   img.loading = "lazy";
   img.referrerPolicy = "no-referrer";
   img.alt = `${title} — ${artist}`;
-  if (rec.cover) img.src = rec.cover;
 
-  // If the given image fails, try wiki search once
+  // If we already have an immediate cover, set it; else mark for lazy resolve
+  if (rec.cover) {
+    img.src = rec.cover;
+  } else {
+    img.dataset.artist = artist;
+    img.dataset.title  = title;
+    img.dataset.hint   = rec.coverHint || "";
+  }
+
+  // One-time fallback if image fails
   img.addEventListener("error", async () => {
-    if (img.dataset.retry === "1") return; // only once
+    if (img.dataset.retry === "1") return;
     img.dataset.retry = "1";
+    // Try wiki search as a last resort
     const fallback = await wikiSearchCover(artist, title);
     if (fallback) img.src = fallback;
   });
@@ -221,7 +252,7 @@ function createCard(rec){
   sleeve.appendChild(faceFront);
   sleeve.appendChild(faceBack);
 
-  // CAPTION
+  // CAPTION (outside the sleeve so it never covers art)
   const caption = document.createElement("div");
   caption.className = "caption";
   const capT = document.createElement("div");
@@ -235,71 +266,109 @@ function createCard(rec){
   article.appendChild(sleeve);
   article.appendChild(caption);
 
-  // Flip
+  // Flip on click
   article.addEventListener("click", ()=> article.classList.toggle("flipped"));
 
   return article;
 }
 
 function renderScroll(){
-  if (!el.scroller) return;
-  el.scroller.innerHTML = "";
+  ui.scroller.innerHTML = "";
   const frag = document.createDocumentFragment();
   state.filtered.forEach(rec => frag.appendChild(createCard(rec)));
-  el.scroller.appendChild(frag);
+  ui.scroller.appendChild(frag);
+  initArtObserver();
 }
 
 function renderGrid(){
-  if (!el.grid) return;
-  el.grid.innerHTML = "";
+  ui.grid.innerHTML = "";
   const frag = document.createDocumentFragment();
   state.filtered.forEach(rec => frag.appendChild(createCard(rec)));
-  el.grid.appendChild(frag);
+  ui.grid.appendChild(frag);
+  initArtObserver();
 }
 
 function render(){
   const scrollView = $("#scrollView");
   const gridView   = $("#gridView");
-
   if (state.view === "scroll"){
-    scrollView?.classList.add("active");
-    gridView?.classList.remove("active");
+    scrollView.classList.add("active");
+    gridView.classList.remove("active");
     renderScroll();
     toggleArrows(true);
   } else {
-    gridView?.classList.add("active");
-    scrollView?.classList.remove("active");
+    gridView.classList.add("active");
+    scrollView.classList.remove("active");
     renderGrid();
     toggleArrows(false);
   }
 }
 
-// 7) Interactions
+// 6) Lazy artwork via IntersectionObserver + concurrency
+let io;
+function initArtObserver(){
+  if (io) io.disconnect();
+
+  io = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if (!entry.isIntersecting) return;
+      const img = entry.target;
+      io.unobserve(img);
+      ensureCover(img);
+    });
+  }, { root: state.view === "scroll" ? ui.scroller : null, rootMargin: "200px", threshold: 0.01 });
+
+  $$(".cover").forEach(img=>{
+    if (!img.getAttribute("src")) io.observe(img);
+  });
+}
+
+function ensureCover(img){
+  const artist = img.dataset.artist;
+  const title  = img.dataset.title;
+  const hint   = img.dataset.hint;
+
+  if (!artist && !title) return; // already has src or not enough info
+
+  // Use cache immediately if available
+  const key = `${(artist||"").toLowerCase()}|${(title||"").toLowerCase()}`;
+  const cached = cacheGet(key);
+  if (cached && cached !== "none") {
+    img.src = cached;
+    return;
+  }
+
+  enqueue(async () => {
+    const url = await resolveCoverLazy({ coverHint: hint, artist, title });
+    if (url) img.src = url;
+  });
+}
+
+// 7) UI
 function toggleArrows(show){
-  if (el.prev) el.prev.style.display = show ? "" : "none";
-  if (el.next) el.next.style.display = show ? "" : "none";
+  if (ui.prev) ui.prev.style.display = show ? "" : "none";
+  if (ui.next) ui.next.style.display = show ? "" : "none";
 }
 function smoothScrollBy(px){
-  el.scroller?.scrollBy({left:px, behavior:"smooth"});
+  ui.scroller?.scrollBy({left:px, behavior:"smooth"});
 }
+ui.prev?.addEventListener("click", ()=> smoothScrollBy(-Math.round(ui.scroller.clientWidth*0.9)));
+ui.next?.addEventListener("click", ()=> smoothScrollBy( Math.round(ui.scroller.clientWidth*0.9)));
 
-el.prev?.addEventListener("click", ()=> smoothScrollBy(-Math.round(el.scroller.clientWidth*0.9)));
-el.next?.addEventListener("click", ()=> smoothScrollBy( Math.round(el.scroller.clientWidth*0.9)));
-
-el.viewScroll?.addEventListener("click", ()=>{
+ui.viewScroll?.addEventListener("click", ()=>{
   state.view = "scroll";
-  el.viewScroll.classList.add("active");
-  el.viewGrid?.classList.remove("active");
+  ui.viewScroll.classList.add("active");
+  ui.viewGrid?.classList.remove("active");
   render();
 });
-el.viewGrid?.addEventListener("click", ()=>{
+ui.viewGrid?.addEventListener("click", ()=>{
   state.view = "grid";
-  el.viewGrid.classList.add("active");
-  el.viewScroll?.classList.remove("active");
+  ui.viewGrid.classList.add("active");
+  ui.viewScroll?.classList.remove("active");
   render();
 });
 
-el.search?.addEventListener("input", (e)=>{
+ui.search?.addEventListener("input", (e)=>{
   const q = e.target.value.trim().toLowerCase();
   state.filtered = state.all.filter(r=>{
     const hay = `${r.title} ${r.artist} ${r.genre} ${r.notes}`.toLowerCase();
@@ -321,9 +390,9 @@ function applySort(){
     return A.localeCompare(B);
   });
 }
-el.sort?.addEventListener("change", ()=> setSortKey(el.sort.value || "title"));
+ui.sort?.addEventListener("change", ()=> setSortKey(ui.sort.value || "title"));
 
-el.shuffle?.addEventListener("click", ()=>{
+ui.shuffle?.addEventListener("click", ()=>{
   for (let i=state.filtered.length-1;i>0;i--){
     const j = Math.floor(Math.random()*(i+1));
     [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
@@ -331,7 +400,7 @@ el.shuffle?.addEventListener("click", ()=>{
   render();
 });
 
-// 8) Stats
+// Stats
 function buildStats(recs){
   const total = recs.length;
   const artistMap = new Map();
@@ -352,24 +421,10 @@ function buildStats(recs){
   return { total, uniqArtists: artistMap.size, topArtists, topGenres };
 }
 
-function ensureStatsCloseX(){
-  if (!el.statsModal) return;
-  const card = el.statsModal.querySelector(".stats-card");
-  if (!card) return;
-  if (card.querySelector(".stats-close")) return; // already there
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "stats-close";
-  btn.setAttribute("aria-label","Close");
-  btn.textContent = "×";
-  btn.addEventListener("click", ()=> el.statsModal.close());
-  card.prepend(btn);
-}
-
 function openStats(){
-  if (!el.statsBody) return;
+  if (!ui.statsBody) return;
   const s = buildStats(state.filtered);
-  el.statsBody.innerHTML = "";
+  ui.statsBody.innerHTML = "";
 
   const grid = document.createElement("div");
   grid.className = "stat-grid";
@@ -378,10 +433,10 @@ function openStats(){
     <div class="stat-tile"><div>Unique Artists</div><div class="stat-big">${s.uniqArtists}</div></div>
     <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${s.topGenres.length}</div></div>
   `;
-  el.statsBody.appendChild(grid);
+  ui.statsBody.appendChild(grid);
 
   if (s.topArtists.length){
-    const h = document.createElement("h3"); h.textContent = "Top Artists"; el.statsBody.appendChild(h);
+    const h = document.createElement("h3"); h.textContent = "Top Artists"; ui.statsBody.appendChild(h);
     const chips = document.createElement("div"); chips.className = "chips";
     s.topArtists.forEach(([name,n])=>{
       const c=document.createElement("span");
@@ -389,11 +444,11 @@ function openStats(){
       c.textContent=`${name} • ${n}`;
       chips.appendChild(c);
     });
-    el.statsBody.appendChild(chips);
+    ui.statsBody.appendChild(chips);
   }
 
   if (s.topGenres.length){
-    const h = document.createElement("h3"); h.textContent = "Top Genres"; el.statsBody.appendChild(h);
+    const h = document.createElement("h3"); h.textContent = "Top Genres"; ui.statsBody.appendChild(h);
     const chips = document.createElement("div"); chips.className = "chips";
     s.topGenres.forEach(([g,n])=>{
       const c=document.createElement("span");
@@ -401,17 +456,13 @@ function openStats(){
       c.textContent=`${g} • ${n}`;
       chips.appendChild(c);
     });
-    el.statsBody.appendChild(chips);
-  } else {
-    const p = document.createElement("p");
-    p.textContent = 'No genres yet. Add a "Genre" column in your Google Sheet to populate genres and stats.';
-    el.statsBody.appendChild(p);
+    ui.statsBody.appendChild(chips);
   }
 
-  ensureStatsCloseX();
-  el.statsModal?.showModal();
+  ui.statsModal?.showModal();
 }
-el.statsBtn?.addEventListener("click", openStats);
+ui.statsBtn?.addEventListener("click", openStats);
+ui.statsModal?.querySelector(".stats-close")?.addEventListener("click", ()=> ui.statsModal.close());
 
-// 9) Kickoff
+// 8) Kickoff
 loadFromSheet();
