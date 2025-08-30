@@ -37,3 +37,42 @@ function openStats(){
 // 👇 make sure this is the *published CSV* URL (ends with output=csv)
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
+
+
+
+async function safeFetchCSV(url) {
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    const text = await res.text();
+
+    // Heuristic: if it came back HTML (edit link), show a message.
+    if (text.trim().startsWith("<")) {
+      showStatus("Your Google Sheet link is not a CSV. Publish to the web and use the CSV link (ends with output=csv).");
+      return "";
+    }
+    return text;
+  } catch (e) {
+    showStatus("Couldn’t load your Google Sheet. Check the URL or try again.");
+    console.error(e);
+    return "";
+  }
+}
+
+function showStatus(msg) {
+  let el = document.getElementById("status");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "status";
+    el.style.cssText =
+      "margin:24px; padding:14px 16px; border:1px solid #1b2436; background:#0f1727; color:#eef2f8; border-radius:12px; max-width:720px";
+    document.querySelector("main")?.prepend(el);
+  }
+  el.textContent = msg;
+}
+
+// Example usage in your loader:
+(async () => {
+  const csv = await safeFetchCSV(SHEET_CSV);
+  if (!csv) return; // bail with message already shown
+  // ...parse CSV and render as before
+})();
