@@ -34,7 +34,7 @@ function openStats(){
 
   document.querySelector('#statsModal').showModal();
 }
-// 👇 make sure this is the *published CSV* URL (ends with output=csv)
+// app.js
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
 
