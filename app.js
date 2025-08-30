@@ -1,10 +1,8 @@
 /* -----------------------------------
-   Vinyl Collection — TURBO STATIC v2
-   Faster:
-   - No external lookups
-   - Smaller first-image (LQ) then upgrade (HQ)
-   - IntersectionObserver lazy attach
-   - Smaller batches
+   Vinyl Collection — TURBO STATIC v3
+   - Direct image URLs use wsrv.nl (low→high)
+   - Wikipedia page URLs resolved lazily on view
+   - SWR cache for the sheet + batch rendering
 ----------------------------------- */
 
 // 0) Config
@@ -44,13 +42,13 @@ const state = {
   filtered: [],
   view: "scroll",
   sortKey: "title",
-  batchSize: 12,       // smaller batches -> quicker first paint
+  batchSize: 12,
   renderedCount: 0,
 };
 
 // 3) CSV parsing
 function pick(obj, names){
-  const keys = Object.keys(obj);
+  const keys = Object.keys(obj || {});
   for (const n of names){
     const k = keys.find(h => h?.trim?.().toLowerCase() === n);
     if (k && String(obj[k]).trim()) return String(obj[k]).trim();
@@ -99,6 +97,35 @@ const LS_SHEET = "vinylSheetV2";
 function cacheSetSheet(raw){ try{ localStorage.setItem(LS_SHEET, raw); }catch{} }
 function cacheGetSheet(){ try{ return localStorage.getItem(LS_SHEET) || ""; }catch{ return ""; } }
 
+// Wikipedia image cache
+const wikiMem = new Map();
+function wikiKey(t){ return "wiki:"+t; }
+function wikiGetLS(t){ try{ const v = localStorage.getItem(wikiKey(t)); return v ? JSON.parse(v) : null; }catch{ return null; } }
+function wikiSetLS(t,val){ try{ localStorage.setItem(wikiKey(t), JSON.stringify(val)); }catch{} }
+
+async function fetchWikiImage(title){
+  if (!title) return {low:"",high:""};
+  if (wikiMem.has(title)) return wikiMem.get(title);
+  const cached = wikiGetLS(title);
+  if (cached){ wikiMem.set(title, cached); return cached; }
+
+  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+  try{
+    const r = await fetch(url);
+    if (!r.ok) throw 0;
+    const j = await r.json();
+    const src = j?.originalimage?.source || j?.thumbnail?.source || "";
+    const val = src ? { low: wsrv(src,240), high: wsrv(src,820) } : {low:"",high:""};
+    wikiSetLS(title,val);
+    wikiMem.set(title,val);
+    return val;
+  }catch{
+    const val = {low:"",high:""};
+    wikiMem.set(title,val);
+    return val;
+  }
+}
+
 // 5) Load sheet: SWR
 async function loadSheet(){
   const cached = cacheGetSheet();
@@ -132,13 +159,16 @@ function hydrateFromCSV(text){
     const notes  = pick(r, HEADER_ALIASES.notes);
     const coverHint = pick(r, HEADER_ALIASES.cover);
 
-    let low="", high="";
+    let low="", high="", wiki="";
     if (looksLikeImage(coverHint)){
       low  = wsrv(coverHint, 240);   // small
       high = wsrv(coverHint, 820);   // crisp
+    } else if (/wikipedia\.org\/wiki\//i.test(coverHint)){
+      const m = coverHint.match(/\/wiki\/([^?#]+)/i);
+      wiki = m ? decodeURIComponent(m[1]).replace(/_/g," ") : "";
     }
 
-    return { title, artist, genre, notes, low, high };
+    return { title, artist, genre, notes, low, high, wiki };
   }).filter(x => x.title || x.artist);
 
   state.all = list;
@@ -146,17 +176,25 @@ function hydrateFromCSV(text){
   applySort();
 }
 
-// 6) Image IO (lazy: low → high)
+// 6) Image IO (lazy: low → high + Wikipedia on-demand)
 let imgIO;
 function ensureImgObserver(root){
   if (imgIO) imgIO.disconnect();
   imgIO = new IntersectionObserver((entries)=>{
-    entries.forEach(entry=>{
+    entries.forEach(async entry=>{
       if (!entry.isIntersecting) return;
       const img = entry.target;
+
+      // If we don’t have sources yet but we DO have a wiki title, resolve it now
+      if (!img.dataset.srcLow && !img.dataset.srcHigh && img.dataset.wiki && !img.dataset.fetching){
+        img.dataset.fetching = "1";
+        const res = await fetchWikiImage(img.dataset.wiki);
+        if (res.low)  img.dataset.srcLow  = res.low;
+        if (res.high) img.dataset.srcHigh = res.high;
+      }
+
       const low  = img.dataset.srcLow;
       const high = img.dataset.srcHigh;
-      if (!low && !high) return;
 
       // set low first
       if (low && !img.dataset.didLow){
@@ -165,7 +203,7 @@ function ensureImgObserver(root){
         img.onload = ()=> img.classList.remove("skeleton");
       }
 
-      // then swap to high (after low settles)
+      // then upgrade to high
       if (high && !img.dataset.didHigh){
         const swap = new Image();
         swap.decoding = "async";
@@ -173,7 +211,7 @@ function ensureImgObserver(root){
           img.src = high;
           img.dataset.didHigh = "1";
         };
-        swap.onerror = ()=>{}; // keep low
+        swap.onerror = ()=>{};
         swap.src = high;
       }
 
@@ -185,7 +223,6 @@ function ensureImgObserver(root){
     threshold: 0.01
   });
 
-  // observe current covers
   (root || document).querySelectorAll("img.cover").forEach(img => imgIO.observe(img));
 }
 
@@ -210,11 +247,12 @@ function createCard(rec, index){
   img.className = "cover skeleton";
   img.loading = "lazy";
   img.decoding = "async";
-  img.fetchPriority = index < 6 ? "high" : "low"; // first few get priority
+  img.fetchPriority = index < 6 ? "high" : "low";
   img.referrerPolicy = "no-referrer";
   img.alt = `${title} — ${artist}`;
   if (rec.low)   img.dataset.srcLow = rec.low;
   if (rec.high)  img.dataset.srcHigh = rec.high;
+  if (!rec.low && !rec.high && rec.wiki) img.dataset.wiki = rec.wiki;
   img.addEventListener("error", ()=>{
     img.removeAttribute("src");
     img.classList.add("skeleton");
@@ -312,7 +350,6 @@ function renderBatch(container){
   }
   container.appendChild(frag);
 
-  // Observe the newly added images
   ensureImgObserver(container);
   state.renderedCount = end;
 }
