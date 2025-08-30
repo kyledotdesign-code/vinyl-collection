@@ -1,5 +1,3 @@
-<!-- app.js -->
-<script>
 /* -------------------------------------------
    Vinyl Collection — drop-in app.js
    Works with your published CSV sheet
@@ -264,8 +262,6 @@ async function loadFromSheet(){
       }
     }
   });
-
-  // refresh stats link text if user searches later
 }
 
 // 7) SEARCH / SORT / VIEW / SHUFFLE
@@ -373,4 +369,3 @@ els.statsBtn.addEventListener("click", openStats);
 
 // 9) KICK OFF
 loadFromSheet();
-</script>
