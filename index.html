@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vinyl Collection</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+  <meta name="theme-color" content="#0f172a">
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <span class="logo">🎵</span>
+      <h1>Vinyl Collection</h1>
+    </div>
+    <div class="controls">
+      <input id="search" type="search" placeholder="Search" autocomplete="off" />
+      <div class="btn-row">
+        <div class="segmented" role="tablist" aria-label="View toggle">
+          <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
+          <button id="view-grid" class="seg-btn" role="tab" aria-selected="false">View: Grid</button>
+        </div>
+        <button id="shuffle" class="btn">Shuffle</button>
+        <button id="prev" class="btn icon" title="Previous" aria-label="Previous"><span class="chev chev-left"></span></button>
+        <button id="next" class="btn icon" title="Next" aria-label="Next"><span class="chev chev-right"></span></button>
+        <button id="statsBtn" class="btn">Stats</button>
+        <a id="editSheet" class="btn ghost" href="https://docs.google.com/spreadsheets/d/1wNsjoZ5UcucOrTUokWfETyx_C5xMKtwWZ7LeDjdi6sI/edit?usp=sharing" target="_blank" rel="noopener">Google Sheet</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="scrollView" class="view view-scroll active" aria-label="Scroll view">
+      <div id="scroller" class="scroller" tabindex="0" role="list"></div>
+    </section>
+
+    <section id="gridView" class="view view-grid" aria-label="Grid view">
+      <div id="grid" class="grid" role="list"></div>
+    </section>
+  </main>
+
+  <dialog id="statsModal">
+    <form method="dialog" class="stats-card">
+      <h2>Collection Stats</h2>
+      <div id="statsBody" class="stats-body"></div>
+      <div class="dialog-actions">
+        <button class="btn">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="cardTpl">
+    <article class="card" role="listitem">
+      <div class="sleeve" aria-live="polite">
+        <div class="face front">
+          <img class="cover" alt="" loading="lazy" referrerpolicy="no-referrer">
+        </div>
+        <div class="face back">
+          <div class="meta">
+            <h3 class="title"></h3>
+            <p class="artist"></p>
+            <p class="genre"></p>
+          </div>
+        </div>
+      </div>
+      <div class="caption">
+        <div class="caption-title"></div>
+        <div class="caption-artist"></div>
+      </div>
+    </article>
+  </template>
+
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
