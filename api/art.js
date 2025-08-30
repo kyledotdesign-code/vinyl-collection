@@ -1,100 +1,82 @@
-// api/art.js
+// /api/art.js
+// Serverless artwork resolver: Apple Music pages, Wikipedia pages, direct images, plus Apple Search fallback.
+
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=604800");
+  try {
+    const { artist = "", title = "", cover = "" } = req.query;
 
-  const artist = (req.query.artist || "").toString().trim();
-  const title  = (req.query.title  || "").toString().trim();
-  const coverHint = (req.query.cover || "").toString().trim();
+    // CORS + edge caching
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate=604800");
 
-  const looksLikeImage = u => /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(u || "");
-  const wsrv = (url) => {
-    if (!url) return "";
-    const u = url.replace(/^https?:\/\//, "");
-    return `https://wsrv.nl/?url=${encodeURIComponent("ssl:" + u)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
-  };
+    // Helpers
+    const wsrv = (u) => {
+      if (!u) return "";
+      const noProto = u.replace(/^https?:\/\//i, "");
+      return `https://wsrv.nl/?url=${encodeURIComponent("ssl:" + noProto)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
+    };
+    const looksLikeImage = (u) => /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(u || "");
+    const UA = {
+      headers: {
+        // Some sites (incl. Apple) prefer a browsery UA
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    };
 
-  async function fromWikipediaPage(url) {
-    const m = url.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i);
-    if (!m) return "";
-    const page = decodeURIComponent(m[1]);
-    try {
-      const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(page)}`);
-      if (!r.ok) return "";
-      const j = await r.json();
-      const src = j?.originalimage?.source || j?.thumbnail?.source || "";
-      return src ? wsrv(src) : "";
-    } catch { return ""; }
-  }
+    // ---- 1) If the sheet gave us a direct image URL, just proxy/resize it.
+    if (looksLikeImage(cover)) {
+      return res.status(200).json({ cover: wsrv(cover), genre: "" });
+    }
 
-  async function fromApple(artist, title) {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(`${artist} ${title}`)}&entity=album&limit=1`;
-    try {
-      const r = await fetch(url, { headers: { "User-Agent": "vinyl-collection/1.0 (+vercel)" } });
-      if (!r.ok) return {};
-      const j = await r.json();
-      if (j.resultCount > 0) {
-        const it = j.results[0];
-        const art = it.artworkUrl100?.replace(/100x100bb\.(?:jpg|png)/, "1000x1000bb.jpg") || "";
-        return { cover: art ? wsrv(art) : "", genre: it.primaryGenreName || "", source: "apple" };
+    // ---- 2) Apple Music page (album OR artist)
+    if (/https?:\/\/(music|itunes)\.apple\.com\//i.test(cover)) {
+      const html = await fetch(cover, UA).then((r) => (r.ok ? r.text() : ""));
+      let img = "";
+      if (html) {
+        // Try secure og:image first
+        let m =
+          html.match(/property=["']og:image:secure_url["']\s+content=["']([^"']+)["']/i) ||
+          html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i);
+        if (m && m[1]) img = m[1];
+
+        // Sometimes Apple embeds artwork URLs in JSON blobs as "artwork" / "artworkUrl"
+        if (!img) {
+          const jsonMatches = html.match(/"artworkUrl"[^"]*"([^"]+)"/i) || html.match(/"artwork"[^}]*"url"[^"]*"([^"]+)"/i);
+          if (jsonMatches && jsonMatches[1]) img = jsonMatches[1];
+        }
       }
-    } catch {}
-    return {};
-  }
+      return res.status(200).json({ cover: img ? wsrv(img) : "", genre: "" });
+    }
 
-  async function fromDeezer(artist, title) {
-    const q = `artist:"${artist}" album:"${title}"`;
-    try {
-      const r = await fetch(`https://api.deezer.com/search/album?q=${encodeURIComponent(q)}`);
-      if (!r.ok) return {};
-      const j = await r.json();
-      const it = j?.data?.[0];
-      if (!it) return {};
-      const art = it.cover_xl || it.cover_big || it.cover_medium || it.cover || "";
-      return { cover: art ? wsrv(art) : "", genre: "", source: "deezer" };
-    } catch {}
-    return {};
-  }
-
-  async function fromWikipediaSearch(artist, title) {
-    const q = `${title} ${artist} album`;
-    try {
-      const s = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json`);
-      if (!s.ok) return {};
-      const sj = await s.json();
-      const first = sj?.query?.search?.[0]?.title;
-      if (!first) return {};
-      const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(first)}`);
-      if (!r.ok) return {};
-      const j = await r.json();
+    // ---- 3) Wikipedia page → lead image
+    if (/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\//i.test(cover)) {
+      const titleFromUrl = decodeURIComponent(cover.split("/wiki/")[1] || "").split(/[?#]/)[0];
+      const api = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(titleFromUrl)}`;
+      const j = await fetch(api, UA).then((r) => (r.ok ? r.json() : null));
       const src = j?.originalimage?.source || j?.thumbnail?.source || "";
-      return { cover: src ? wsrv(src) : "", genre: "", source: "wikipedia" };
-    } catch {}
-    return {};
-  }
-
-  // 1) Sheet cover hint first
-  if (coverHint) {
-    if (looksLikeImage(coverHint)) {
-      return res.status(200).json({ cover: wsrv(coverHint), genre: "", source: "sheet" });
+      return res.status(200).json({ cover: src ? wsrv(src) : "", genre: "" });
     }
-    if (/wikipedia\.org\/wiki\//i.test(coverHint)) {
-      const c = await fromWikipediaPage(coverHint);
-      if (c) return res.status(200).json({ cover: c, genre: "", source: "wikipedia" });
+
+    // ---- 4) Fallback: Apple iTunes Search (server-side to avoid 403 in browser)
+    if (artist || title) {
+      const term = [artist, title].filter(Boolean).join(" ");
+      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=album&limit=1`;
+      const data = await fetch(url, UA).then((r) => (r.ok ? r.json() : null));
+      if (data?.results?.length) {
+        const r0 = data.results[0];
+        // Upscale artwork to 1000x1000
+        const art = (r0.artworkUrl100 || "").replace(/\/[\d]+x[\d]+bb\.(jpg|png)/i, "/1000x1000bb.$1");
+        const genre = r0.primaryGenreName || "";
+        return res.status(200).json({ cover: art ? wsrv(art) : "", genre });
+      }
     }
+
+    // Nothing found
+    return res.status(200).json({ cover: "", genre: "" });
+  } catch (e) {
+    console.error(e);
+    return res.status(200).json({ cover: "", genre: "" });
   }
-
-  // 2) Apple
-  const a = await fromApple(artist, title);
-  if (a?.cover) return res.status(200).json(a);
-
-  // 3) Deezer fallback
-  const d = await fromDeezer(artist, title);
-  if (d?.cover) return res.status(200).json(d);
-
-  // 4) Wikipedia search fallback
-  const w = await fromWikipediaSearch(artist, title);
-  if (w?.cover) return res.status(200).json(w);
-
-  return res.status(200).json({ cover: "", genre: "", source: "none" });
 }
