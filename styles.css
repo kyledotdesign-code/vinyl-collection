@@ -1,14 +1,17 @@
 :root{
-  /* Softer, ink-blue theme */
-  --bg: #0b1220;
-  --bg2:#0a101a;
-  --fg: #eef2f8;
-  --muted: #b7c2d7;
-  --card: #111827;
-  --accent: #a7c5ff;   /* soft indigo */
-  --accent-2: #8ef0b0; /* mint */
-  --border: #1a2436;
-  --shadow: 0 10px 30px rgba(0,0,0,.25);
+  /* Dark-ish gray theme */
+  --bg: #0f1115;
+  --bg2:#0c0e12;
+  --fg: #e9edf3;
+  --muted: #b8c0cc;
+
+  --card: #151820;
+  --border: #242834;
+
+  --accent: #d0d6e6;   /* soft light gray-blue for emphasis */
+  --accent-2: #9fe3bb; /* mint for genre chips */
+
+  --shadow: 0 10px 30px rgba(0,0,0,.28);
 }
 
 *{box-sizing:border-box}
@@ -17,7 +20,7 @@ body{
   margin:0;
   font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   background:
-    radial-gradient(1400px 700px at 50% -15%, #141b2a 0%, var(--bg) 55%),
+    radial-gradient(1400px 700px at 50% -15%, #191c23 0%, var(--bg) 55%),
     linear-gradient(to bottom, var(--bg2), var(--bg));
   color:var(--fg);
 }
@@ -26,7 +29,7 @@ body{
 .site-header{
   position: sticky; top:0; z-index:100;
   backdrop-filter: blur(10px);
-  background: linear-gradient(to bottom, rgba(11,18,32,.95), rgba(11,18,32,.65) 65%, rgba(11,18,32,0));
+  background: linear-gradient(to bottom, rgba(15,17,21,.95), rgba(15,17,21,.65) 65%, rgba(15,17,21,0));
   border-bottom:1px solid var(--border);
   padding:14px clamp(12px,2vw,28px) 10px;
 }
@@ -37,16 +40,16 @@ body{
 .controls{margin-top:10px}
 #search{
   width:100%; padding:12px 14px; border-radius:12px;
-  border:1px solid var(--border); background:#0f1727; color:var(--fg);
+  border:1px solid var(--border); background:#12141a; color:var(--fg);
   outline:none; box-shadow:var(--shadow);
 }
 #search::placeholder{color:var(--muted)}
 
-/* Buttons (unified size & look) */
+/* Buttons (unified look) */
 .btn-row{margin-top:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center}
 .btn,.seg-btn,select.btn,.btn.ghost{
   padding:10px 14px;border-radius:12px;border:1px solid var(--border);
-  background:linear-gradient(180deg,#151d2f,#0f1727); color:var(--fg); cursor:pointer;
+  background:linear-gradient(180deg,#1b1e26,#13161c); color:var(--fg); cursor:pointer;
   font-weight:600; font-size:15px; letter-spacing:.2px;
   transition:transform .06s ease, background .2s ease, border-color .2s ease;
   box-shadow:var(--shadow);
@@ -58,9 +61,9 @@ a.btn, a.btn.ghost{ text-decoration: none; color: var(--fg); } /* no underline *
 select.btn{appearance:none}
 
 /* Segmented toggle */
-.segmented{display:inline-flex;background:#0e1627;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px}
+.segmented{display:inline-flex;background:#141821;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px}
 .seg-btn{background:transparent;border:none;padding:8px 10px;border-radius:8px}
-.seg-btn.active{background:#18213a;border:1px solid #213051}
+.seg-btn.active{background:#1a1f2a;border:1px solid #2a3140}
 
 /* Layout */
 main{padding:18px clamp(10px,2vw,28px) 28px}
@@ -75,7 +78,7 @@ main{padding:18px clamp(10px,2vw,28px) 28px}
   border:1px solid rgba(255,255,255,.08);
   background:
     radial-gradient(120% 120% at 50% -10%, rgba(255,255,255,.10), rgba(255,255,255,.03)),
-    linear-gradient(180deg, rgba(18,26,43,.92), rgba(12,18,33,.85));
+    linear-gradient(180deg, rgba(30,34,44,.9), rgba(18,21,28,.85));
   backdrop-filter: blur(8px);
   cursor:pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35);
 }
@@ -112,28 +115,44 @@ main{padding:18px clamp(10px,2vw,28px) 28px}
 .face{position:absolute;inset:0;backface-visibility:hidden;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
 .card.flipped .front{transform:rotateY(180deg)}
 .card.flipped .back{transform:rotateY(0deg)}
-.back{transform:rotateY(180deg);display:grid;place-items:center;background:#0e172b}
-.front .cover{width:100%;height:100%;object-fit:cover;display:block;background:#0a0f20}
+.back{transform:rotateY(180deg);display:grid;place-items:center;background:#12151c}
+.front .cover{width:100%;height:100%;object-fit:cover;display:block;background:#0d1016}
 
 /* Meta + caption */
 .meta{padding:14px;text-align:center}
 .meta .title{font-size:16px;margin:0 0 6px}
 .meta .artist{margin:0;color:var(--muted)}
 .meta .genre{margin:10px 0 0;color:var(--accent-2);font-weight:700}
+.meta .notes{margin-top:10px;color:var(--muted);font-size:13px;opacity:.9}
+
 .caption{text-align:center;padding:8px 6px 2px}
 .caption-title{font-weight:700;margin:0}
 .caption-artist{color:var(--muted);font-size:13px;margin:2px 0 4px}
 
 /* Stats modal */
 dialog#statsModal{border:none;padding:0;background:transparent}
-dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,20,.55)}
-.stats-card{max-width:720px;width:min(92vw,720px);border:none;border-radius:16px;padding:18px 18px 22px;background:#0f1727;color:var(--fg);box-shadow:var(--shadow)}
+dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(12,14,18,.55)}
+.stats-card{
+  position:relative;
+  max-width:720px;width:min(92vw,720px);
+  border:none;border-radius:16px;padding:18px 18px 22px;
+  background:#151820;color:var(--fg);box-shadow:var(--shadow)
+}
+/* Top-right close */
+.stats-close{
+  position:absolute; top:8px; right:8px;
+  width:36px;height:36px;border-radius:10px;border:1px solid var(--border);
+  background:linear-gradient(180deg,#1b1e26,#13161c);
+  color:var(--fg); font-size:20px; line-height:1;
+  display:grid;place-items:center; cursor:pointer;
+}
+.stats-close:hover{transform:translateY(-1px)}
 .stats-body{display:grid;gap:14px}
 .stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.stat-tile{background:#101a2e;border:1px solid var(--border);border-radius:12px;padding:12px;display:grid;gap:6px;text-align:center}
+.stat-tile{background:#171b24;border:1px solid var(--border);border-radius:12px;padding:12px;display:grid;gap:6px;text-align:center}
 .stat-big{font-size:28px;font-weight:800;color:var(--accent)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{background:#122149;border:1px solid #1e2c54;color:#cfe2ff;padding:6px 10px;border-radius:999px;font-weight:700}
+.chip{background:#1a2030;border:1px solid #2a3140;color:#e2e8f5;padding:6px 10px;border-radius:999px;font-weight:700}
 
 /* Mobile tweaks */
 @media (max-width: 720px){
