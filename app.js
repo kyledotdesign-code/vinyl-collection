@@ -1,7 +1,8 @@
 /* -------------------------------------------------------
-   Vinyl Collection — artwork fixed (weserv + wiki resolve + fallbacks)
-   Sheet CSV:
-   https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
+   Vinyl Collection — reliable artwork (direct-first + wiki resolve + proxy fallback)
+   Works with either:
+   - #view-scroll / #view-grid / #sort / #shuffle / #statsBtn
+   - or camelCase versions (#viewScroll, #viewGrid, #sortSelect, #btnShuffle, #btnStats)
 -------------------------------------------------------- */
 
 // 0) CONFIG
@@ -17,40 +18,40 @@ const HEADER_ALIASES = {
   altCover: ["alt artwork","alt cover","alternate artwork","alternate cover"]
 };
 
-// simple neutral placeholder (SVG)
+// calm placeholder so the UI never looks broken
 const PLACEHOLDER =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <defs><radialGradient id="g" cx="50%" cy="50%" r="60%">
       <stop offset="0%" stop-color="#2a3140"/><stop offset="100%" stop-color="#121722"/>
     </radialGradient></defs>
-    <circle cx="50" cy="50" r="48" fill="url(#g)"/>
+    <rect width="100" height="100" rx="10" fill="url(#g)"/>
     <circle cx="50" cy="50" r="8" fill="#0a0f17" stroke="#444e60" stroke-width="2"/>
     <circle cx="50" cy="50" r="2.5" fill="#ddd"/>
   </svg>`);
 
-// 1) ELEMENTS
+// 1) ELEMENTS (robust selectors to match either version of the HTML)
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 
 const els = {
-  header:     $('#siteHeader'),
+  header:     $('#siteHeader') || $('.site-header') || document.body,
   search:     $('#search'),
-  viewScroll: $('#viewScroll'),
-  viewGrid:   $('#viewGrid'),
-  sort:       $('#sortSelect'),
-  shuffle:    $('#btnShuffle'),
-  statsBtn:   $('#btnStats'),
-  grid:       $('#grid'),
+  viewScroll: $('#view-scroll') || $('#viewScroll'),
+  viewGrid:   $('#view-grid')   || $('#viewGrid'),
+  sort:       $('#sort')        || $('#sortSelect'),
+  shuffle:    $('#shuffle')     || $('#btnShuffle'),
+  statsBtn:   $('#statsBtn')    || $('#btnStats'),
   scroller:   $('#scroller'),
+  grid:       $('#grid'),
   statsDlg:   $('#statsModal'),
   statsBody:  $('#statsBody'),
   tpl:        $('#cardTpl')
 };
 
-// keep layout offset for fixed header
+// header offset for fixed header (if your CSS uses --header-h)
 function applyHeaderOffset(){
-  const h = els.header?.offsetHeight || 120;
+  const h = els.header?.offsetHeight || 96;
   document.body.style.setProperty('--header-h', `${h}px`);
   document.body.classList.add('has-fixed-header');
 }
@@ -99,14 +100,13 @@ function parseCSV(text){
   return { header, data };
 }
 
-// 4) IMAGE RESOLUTION
+// 4) IMAGE RESOLUTION (direct-first → proxy fallback → placeholder)
 const IMG_EXT_RE = /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i;
 const isImageUrl = (u) => IMG_EXT_RE.test(u||"");
 const isWikiPage = (u) => /^https?:\/\/[^/]*wikipedia\.org\/wiki\/[^]+/i.test(u||"");
 
-// Correct weserv proxy: encode entire "ssl:host/path"
-function weservProxy(url){
-  if(!url) return "";
+// weserv format must be url=ssl:host/path (and the whole thing URL-encoded)
+function weserv(url){
   const stripped = url.replace(/^https?:\/\//,'');
   return `https://images.weserv.nl/?url=${encodeURIComponent('ssl:' + stripped)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
@@ -123,17 +123,19 @@ async function wikiLeadImage(pageUrl){
   }catch{ return ""; }
 }
 
-// Decide best image candidate for a single cell (Album Artwork or Alt Artwork)
-async function pickBestImage(raw){
-  const u = (raw||"").trim();
-  if(!u) return { prox:"", direct:"" };
-  if(isImageUrl(u))    return { prox: weservProxy(u), direct: u };
+// choose best image from Album Artwork / Alt Artwork / Wikipedia page
+async function resolveImageUrl(input){
+  const u = (input||"").trim();
+  if(!u) return { direct:"", proxy:"" };
+
+  if(isImageUrl(u)){
+    return { direct: u, proxy: weserv(u) };
+  }
   if(isWikiPage(u)){
     const lead = await wikiLeadImage(u);
-    if(lead) return { prox: weservProxy(lead), direct: lead };
+    if(lead) return { direct: lead, proxy: weserv(lead) };
   }
-  // Non-image / non-wiki page (Apple Music, etc.) → no scrape
-  return { prox:"", direct:"" };
+  return { direct:"", proxy:"" }; // non-image page (Apple/Spotify/etc) → no scrape
 }
 
 // 5) LOADING
@@ -165,18 +167,17 @@ async function loadFromSheet(){
       const notes     = pick(r, HEADER_ALIASES.notes);
       const coverRaw  = pick(r, HEADER_ALIASES.cover);
       const altRaw    = pick(r, HEADER_ALIASES.altCover);
-      // pick primary string now; actual resolution runs async
       const input     = coverRaw || altRaw || "";
-      return { title, artist, genre, notes, input, prox:"", direct:"" };
+      return { title, artist, genre, notes, input, direct:"", proxy:"" };
     }).filter(x => x.title || x.artist);
 
     state.all = normalized;
     state.filtered = [...normalized];
     applySort();
-    render(); // placeholders immediately
+    render();                  // render quickly with placeholders
     $('#status')?.remove();
 
-    // hydrate images with limited concurrency
+    // hydrate images progressively
     await hydrateImages(state.all, 8);
   }catch(e){
     console.error(e);
@@ -184,7 +185,7 @@ async function loadFromSheet(){
   }
 }
 
-// progressively resolve and paint covers
+// progressively resolve covers; limit concurrent work
 async function hydrateImages(recs, limit=8){
   let idx = 0;
   async function worker(){
@@ -192,44 +193,48 @@ async function hydrateImages(recs, limit=8){
       const i = idx++;
       const rec = recs[i];
 
-      // try Album Artwork / Alt Artwork string
-      let { prox, direct } = await pickBestImage(rec.input);
+      // resolve from Album Artwork / Alt Artwork / Wikipedia
+      const { direct, proxy } = await resolveImageUrl(rec.input);
+      rec.direct = direct; rec.proxy = proxy;
 
-      // if still nothing, leave placeholder (we are no longer scraping Apple/Spotify)
-      rec.prox = prox; rec.direct = direct;
-
-      paintCover(i, prox, direct);
+      paintCover(i, direct, proxy);
     }
   }
   await Promise.all(Array.from({length:Math.max(1,Math.min(limit,recs.length))}, worker));
 }
 
-// actually set <img> src, with proxy→direct→placeholder fallback
-function paintCover(i, proxUrl, directUrl){
+// set <img> with direct → proxy → placeholder failover
+function paintCover(i, directUrl, proxyUrl){
   const roots = [els.scroller, els.grid];
   for(const root of roots){
     if(!root) continue;
     const card = root.querySelector(`.card[data-idx="${i}"]`);
     if(!card) continue;
     const img = card.querySelector('.cover');
-    let triedDirect = false;
+    let triedProxy = false;
+
     img.onerror = ()=>{
-      if(!triedDirect && directUrl){
-        triedDirect = true;
-        img.src = directUrl;
+      if(!triedProxy && proxyUrl){
+        triedProxy = true;
+        img.src = proxyUrl;
       }else{
         img.src = PLACEHOLDER;
       }
       card.classList.add('loaded');
     };
     img.onload  = ()=> card.classList.add('loaded');
-    img.src = proxUrl || directUrl || PLACEHOLDER;
+
+    img.referrerPolicy = "no-referrer";     // avoid hotlink referrer issues
+    img.src = directUrl || proxyUrl || PLACEHOLDER;
   }
 }
 
 // 6) RENDERING
 function createCard(rec, idx){
-  const tpl = els.tpl.content.cloneNode(true);
+  const tplEl = els.tpl && els.tpl.content ? els.tpl.content : null;
+  if(!tplEl) throw new Error("Missing #cardTpl <template> in index.html");
+
+  const tpl = tplEl.cloneNode(true);
   const card   = tpl.querySelector('.card');
   const img    = tpl.querySelector('.cover');
   const titleE = tpl.querySelector('.title');
@@ -239,21 +244,18 @@ function createCard(rec, idx){
   const capT   = tpl.querySelector('.caption-title');
   const capA   = tpl.querySelector('.caption-artist');
 
-  card.dataset.idx = idx;
-
   const safeTitle  = rec.title  || "Untitled";
   const safeArtist = rec.artist || "Unknown Artist";
 
-  capT.textContent    = safeTitle;
-  capA.textContent    = safeArtist;
-  titleE.textContent  = safeTitle;
-  artistE.textContent = safeArtist;
-  genreE.innerHTML    = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
-  if (notesE) notesE.textContent = rec.notes || "";
-
-  img.alt = `${safeTitle} — ${safeArtist}`;
-  img.src = PLACEHOLDER;                   // paint real image later
-  card.classList.add('loaded');            // keep UI snappy (already showing placeholder)
+  card.dataset.idx   = idx;
+  img.alt            = `${safeTitle} — ${safeArtist}`;
+  img.src            = PLACEHOLDER;        // real art swapped in later
+  capT.textContent   = safeTitle;
+  capA.textContent   = safeArtist;
+  titleE.textContent = safeTitle;
+  artistE.textContent= safeArtist;
+  if(genreE) genreE.innerHTML = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
+  if(notesE) notesE.textContent = rec.notes || "";
 
   card.addEventListener('click', (e)=>{
     if(e.target.closest('.nav-arrow')) return;
@@ -274,8 +276,8 @@ function renderGrid(){
 }
 function render(){
   const isScroll = state.view === 'scroll';
-  $('.scroller-wrap').classList.toggle('active', isScroll);
-  $('.grid-wrap').classList.toggle('active', !isScroll);
+  $('.view-scroll')?.classList.toggle('active', isScroll);
+  $('.view-grid') ?.classList.toggle('active', !isScroll);
   if(isScroll){ renderScroll(); toggleArrows(true); }
   else        { renderGrid();   toggleArrows(false); }
 }
@@ -283,23 +285,23 @@ function render(){
 // 7) UI
 function toggleArrows(show){ $$('.nav-arrow').forEach(b=> b.style.display = show ? '' : 'none'); }
 function smoothScrollBy(px){ els.scroller?.scrollBy({ left: px, behavior: 'smooth' }); }
-$('.nav-arrow.left') .addEventListener('click', ()=> smoothScrollBy(-Math.round(els.scroller.clientWidth*0.9)));
-$('.nav-arrow.right').addEventListener('click',()=> smoothScrollBy(Math.round(els.scroller.clientWidth*0.9)));
+$('.nav-arrow.left') ?.addEventListener('click', ()=> smoothScrollBy(-Math.round(els.scroller.clientWidth*0.9)));
+$('.nav-arrow.right')?.addEventListener('click', ()=> smoothScrollBy(Math.round(els.scroller.clientWidth*0.9)));
 
-$('#viewScroll').addEventListener('click', ()=>{
+els.viewScroll && els.viewScroll.addEventListener('click', ()=>{
   state.view = 'scroll';
-  $('#viewScroll').classList.add('active');
-  $('#viewGrid').classList.remove('active');
+  els.viewScroll.classList.add('active');
+  els.viewGrid?.classList.remove('active');
   render();
 });
-$('#viewGrid').addEventListener('click', ()=>{
+els.viewGrid && els.viewGrid.addEventListener('click', ()=>{
   state.view = 'grid';
-  $('#viewGrid').classList.add('active');
-  $('#viewScroll').classList.remove('active');
+  els.viewGrid.classList.add('active');
+  els.viewScroll?.classList.remove('active');
   render();
 });
 
-els.search.addEventListener('input', (e)=>{
+els.search && els.search.addEventListener('input', (e)=>{
   const q = e.target.value.trim().toLowerCase();
   state.filtered = state.all.filter(r=>{
     const hay = `${r.title} ${r.artist} ${r.genre} ${r.notes}`.toLowerCase();
@@ -317,9 +319,9 @@ function applySort(){
     return A.localeCompare(B);
   });
 }
-els.sort.addEventListener('change', ()=> setSortKey(els.sort.value || 'title'));
+els.sort && els.sort.addEventListener('change', ()=> setSortKey(els.sort.value || 'title'));
 
-els.shuffle.addEventListener('click', ()=>{
+els.shuffle && els.shuffle.addEventListener('click', ()=>{
   for(let i=state.filtered.length-1;i>0;i--){
     const j = Math.floor(Math.random()*(i+1));
     [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
@@ -358,8 +360,8 @@ function openStats(){
   `;
   els.statsDlg.showModal();
 }
-$('#statsModal .dialog-close').addEventListener('click', ()=> els.statsDlg.close());
-els.statsBtn.addEventListener('click', openStats);
+els.statsBtn && els.statsBtn.addEventListener('click', openStats);
+$('#statsModal .dialog-close')?.addEventListener('click', ()=> els.statsDlg.close());
 
 // 9) GO
 loadFromSheet();
