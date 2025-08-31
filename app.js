@@ -1,9 +1,8 @@
-/* Vinyl Collection — app.js (safe drop-in)
-   - Waits for DOM before running (fixes null .content error)
-   - Auto-creates <template id="cardTpl"> if missing
-   - Starts scroller at the very first card
-   - Uses /api/art for reliable cover art (Apple/Wiki/direct/itunes fallback)
-   - Progressive rendering with light throttling for faster perceived load
+/* Vinyl Collection — app.js
+   - No underline on Sheet link (handled in CSS below)
+   - Stats: single Close button (top-right)
+   - New "Alt Artwork" column fallback
+   - Progressive load + reliable /api/art resolver
 */
 
 const SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
@@ -13,30 +12,23 @@ const HEADER_ALIASES = {
   artist: ["artist","artists","band"],
   genre:  ["genre","genres","style","category"],
   notes:  ["notes","special notes","comment","comments","description"],
-  cover:  ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"]
+  cover:  ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"],
+  alt:    ["alt artwork","alt art","alt cover","alternate artwork","alternate cover"]
 };
 
-// global element bag (filled in init)
 let els = {};
+const $  = (s, r=document) => r.querySelector(s);
 
-// ---------- tiny CSV parser (header row → objects) ----------
+// --- tiny CSV (header → objects)
 function parseCSV(text){
   const rows = [];
-  let cur = [''];
-  let inQ = false;
+  let cur = [''], inQ = false;
   for (let i=0;i<text.length;i++){
     const c=text[i];
-    if(c === '"'){
-      if(inQ && text[i+1] === '"'){ cur[cur.length-1] += '"'; i++; }
-      else inQ = !inQ;
-    }else if(c === ',' && !inQ){
-      cur.push('');
-    }else if((c === '\n' || c === '\r') && !inQ){
-      rows.push(cur); cur=[''];
-      if(c==='\r' && text[i+1]==='\n') i++;
-    }else{
-      cur[cur.length-1] += c;
-    }
+    if(c === '"'){ if(inQ && text[i+1] === '"'){ cur[cur.length-1] += '"'; i++; } else inQ = !inQ; }
+    else if(c === ',' && !inQ){ cur.push(''); }
+    else if((c === '\n' || c === '\r') && !inQ){ rows.push(cur); cur=['']; if(c==='\r' && text[i+1]==='\n') i++; }
+    else cur[cur.length-1] += c;
   }
   if(cur.length>1 || cur[0] !== '') rows.push(cur);
   const header = (rows.shift()||[]).map(h => (h||"").trim().toLowerCase());
@@ -45,8 +37,6 @@ function parseCSV(text){
   });
 }
 
-// ---------- helpers ----------
-const $  = (s, r=document) => r.querySelector(s);
 function pick(obj, keys){
   for(const k of keys){
     const hit = Object.keys(obj).find(h => (h||"").trim().toLowerCase() === k);
@@ -54,6 +44,7 @@ function pick(obj, keys){
   }
   return "";
 }
+
 const looksLikeImage = (u) => /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(u || "");
 const wsrv = (u) => {
   if(!u) return "";
@@ -72,19 +63,19 @@ async function fromWikipediaPage(pageUrl){
     return src ? wsrv(src) : "";
   }catch{ return ""; }
 }
-// server-side resolver (Apple Music pages, Wikipedia, direct image, iTunes fallback)
 async function resolveArt(artist, title, coverHint){
   const url = `/api/art?artist=${encodeURIComponent(artist||"")}&title=${encodeURIComponent(title||"")}&cover=${encodeURIComponent(coverHint||"")}`;
   try{
-    const r = await fetch(url, { cache: "no-store" });
+    const r = await fetch(url, { cache:"no-store" });
     if(!r.ok) return { cover:"", genre:"" };
-    return await r.json(); // { cover, genre }
-  }catch{
-    return { cover:"", genre:"" };
-  }
+    return await r.json();
+  }catch{ return { cover:"", genre:"" }; }
 }
 
-// ---------- template safety ----------
+// --- state
+const state = { all:[], filtered:[], view:'scroll', sortKey:'title' };
+
+// --- template (guarantee exists)
 function ensureTemplate(){
   let tpl = $('#cardTpl');
   if(!tpl){
@@ -115,18 +106,10 @@ function ensureTemplate(){
   return tpl;
 }
 
-// ---------- state ----------
-const state = {
-  all: [],
-  filtered: [],
-  view: 'scroll',    // 'scroll' | 'grid'
-  sortKey: 'title'
-};
-
-// ---------- rendering ----------
+// --- render
 function createCard(rec){
   const tplEl = ensureTemplate();
-  const tpl = tplEl.content.cloneNode(true);       // << never null now
+  const tpl = tplEl.content.cloneNode(true);
   const art = tpl.querySelector('.cover');
   const t   = tpl.querySelector('.title');
   const a   = tpl.querySelector('.artist');
@@ -184,17 +167,13 @@ function render(progressive=false){
     toggleArrows(false);
   }
 }
-function snapToStart(){
-  if(els.scroller){
-    els.scroller.scrollTo({ left: 0, behavior: 'auto' });
-  }
-}
+function snapToStart(){ els.scroller?.scrollTo({ left: 0, behavior:'auto' }); }
 function toggleArrows(show){
   if(els.prev) els.prev.style.display = show ? "" : "none";
   if(els.next) els.next.style.display = show ? "" : "none";
 }
 
-// ---------- sorting / search / shuffle ----------
+// --- sort/search/shuffle
 function applySort(){
   const k = state.sortKey;
   state.filtered.sort((a,b)=>{
@@ -204,7 +183,7 @@ function applySort(){
   });
 }
 
-// ---------- stats ----------
+// --- stats
 function buildStats(recs){
   const total = recs.length;
   const artistMap = new Map();
@@ -242,7 +221,6 @@ function openStats(){
     });
     body.appendChild(chips);
   }
-
   if (s.topGenres.length){
     const h = document.createElement('h3'); h.textContent='Top Genres'; body.appendChild(h);
     const chips = document.createElement('div'); chips.className='chips';
@@ -253,59 +231,60 @@ function openStats(){
     body.appendChild(chips);
   }
 
-  // top-right Close button
-  let actions = $('.dialog-actions', els.statsModal);
-  if(!actions){
-    actions = document.createElement('div');
-    actions.className = 'dialog-actions';
-    els.statsModal.querySelector('.stats-card').appendChild(actions);
-  }
-  actions.innerHTML = '';
+  // ensure ONLY ONE close button, top-right
+  const card = els.statsModal.querySelector('.stats-card');
+  // remove any existing actions/close buttons
+  card.querySelectorAll('.dialog-actions, .dialog-close, .stats-close-x').forEach(n=>n.remove());
+  // create actions container
+  const actions = document.createElement('div');
+  actions.className = 'dialog-actions';
   const close = document.createElement('button');
-  close.className = 'dialog-close';
+  close.type = 'button';
+  close.className = 'btn dialog-close';
   close.textContent = 'Close';
   close.addEventListener('click', ()=> els.statsModal.close());
   actions.appendChild(close);
+  card.appendChild(actions);
 
   els.statsModal.showModal();
 }
 
-// ---------- data load ----------
+// --- data load (Alt Artwork fallback)
 async function loadFromSheet(){
-  const text = await fetch(SHEET_CSV, { cache: "no-store" }).then(r => r.text());
+  const text = await fetch(SHEET_CSV, { cache:"no-store" }).then(r => r.text());
   const rows = parseCSV(text);
 
   const base = rows.map(r=>{
-    const title   = pick(r, HEADER_ALIASES.title);
-    const artist  = pick(r, HEADER_ALIASES.artist);
-    const genre   = pick(r, HEADER_ALIASES.genre);
-    const notes   = pick(r, HEADER_ALIASES.notes);
-    const coverRaw= pick(r, HEADER_ALIASES.cover);
-    return { title, artist, genre, notes, coverRaw, cover:"" };
+    const title    = pick(r, HEADER_ALIASES.title);
+    const artist   = pick(r, HEADER_ALIASES.artist);
+    const genre    = pick(r, HEADER_ALIASES.genre);
+    const notes    = pick(r, HEADER_ALIASES.notes);
+    const coverRaw = pick(r, HEADER_ALIASES.cover);
+    const altRaw   = pick(r, HEADER_ALIASES.alt);         // NEW
+    return { title, artist, genre, notes, coverRaw, altRaw, cover:"" };
   }).filter(x => x.title || x.artist);
 
-  // Hydrate artwork/genre with throttling and progressive renders
   const CONCURRENCY = 10;
   const out = [];
   let i = 0;
 
+  async function tryUrl(u){
+    if(!u) return "";
+    if(looksLikeImage(u)) return wsrv(u);
+    if (/wikipedia\.org\/wiki\//i.test(u)) return await fromWikipediaPage(u);
+    return "";
+  }
+
   async function workOne(rec){
-    let cover = "";
+    let cover = await tryUrl(rec.coverRaw);
+    if(!cover) cover = await tryUrl(rec.altRaw);     // try Alt Artwork if main is blank/misses
     let genre = rec.genre || "";
 
-    if(rec.coverRaw){
-      if(looksLikeImage(rec.coverRaw)){
-        cover = wsrv(rec.coverRaw);
-      } else if (/wikipedia\.org\/wiki\//i.test(rec.coverRaw)){
-        cover = await fromWikipediaPage(rec.coverRaw);
-      }
-    }
     if(!cover || !genre){
-      const { cover:c2, genre:g2 } = await resolveArt(rec.artist, rec.title, rec.coverRaw);
+      const { cover:c2, genre:g2 } = await resolveArt(rec.artist, rec.title, rec.coverRaw || rec.altRaw || "");
       cover = cover || c2;
       genre = genre || g2;
     }
-
     out.push({ ...rec, cover, genre });
   }
 
@@ -314,20 +293,19 @@ async function loadFromSheet(){
       const batch = base.slice(i, i+CONCURRENCY);
       i += CONCURRENCY;
       await Promise.all(batch.map(workOne));
-      // progressive update
       state.all = out.slice();
       state.filtered = state.all.slice();
       applySort();
-      render(true);
+      render(true); // progressive
     }
   }
 
   await runner();
   render();
-  snapToStart(); // make sure we start at the very first one
+  snapToStart();
 }
 
-// ---------- init (wait for DOM) ----------
+// --- init
 function init(){
   els = {
     search:     $('#search'),
@@ -347,22 +325,18 @@ function init(){
     statsBody:  $('#statsBody')
   };
 
-  ensureTemplate(); // guarantees #cardTpl exists
-
-  // events
-  if(els.search){
-    els.search.addEventListener('input', e=>{
-      const q = e.target.value.trim().toLowerCase();
-      state.filtered = state.all.filter(r=>{
-        const hay = `${r.title} ${r.artist} ${r.genre} ${r.notes}`.toLowerCase();
-        return hay.includes(q);
-      });
-      applySort(); render();
+  // listeners
+  els.search?.addEventListener('input', e=>{
+    const q = e.target.value.trim().toLowerCase();
+    state.filtered = state.all.filter(r=>{
+      const hay = `${r.title} ${r.artist} ${r.genre} ${r.notes}`.toLowerCase();
+      return hay.includes(q);
     });
-  }
+    applySort(); render();
+  });
 
-  if(els.sort)   els.sort.addEventListener('change', ()=> { state.sortKey = els.sort.value || 'title'; applySort(); render(); });
-  if(els.shuffle)els.shuffle.addEventListener('click', ()=>{
+  els.sort?.addEventListener('change', ()=> { state.sortKey = els.sort.value || 'title'; applySort(); render(); });
+  els.shuffle?.addEventListener('click', ()=>{
     for(let i=state.filtered.length-1;i>0;i--){
       const j = Math.floor(Math.random()*(i+1));
       [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
@@ -370,29 +344,31 @@ function init(){
     render();
   });
 
-  if(els.viewScroll) els.viewScroll.addEventListener('click', ()=>{
+  els.viewScroll?.addEventListener('click', ()=>{
     state.view = 'scroll';
     els.viewScroll.classList.add('active');
     els.viewGrid?.classList.remove('active');
     render();
   });
-  if(els.viewGrid) els.viewGrid.addEventListener('click', ()=>{
+  els.viewGrid?.addEventListener('click', ()=>{
     state.view = 'grid';
     els.viewGrid.classList.add('active');
     els.viewScroll?.classList.remove('active');
     render();
   });
 
-  if(els.prev) els.prev.addEventListener('click', ()=> els.scroller?.scrollBy({ left: -Math.round(els.scroller.clientWidth*0.9), behavior:'smooth' }));
-  if(els.next) els.next.addEventListener('click', ()=> els.scroller?.scrollBy({ left:  Math.round(els.scroller.clientWidth*0.9), behavior:'smooth' }));
+  els.prev?.addEventListener('click', ()=> els.scroller?.scrollBy({ left: -Math.round(els.scroller.clientWidth*0.9), behavior:'smooth' }));
+  els.next?.addEventListener('click', ()=> els.scroller?.scrollBy({ left:  Math.round(els.scroller.clientWidth*0.9), behavior:'smooth' }));
 
-  if(els.statsBtn) els.statsBtn.addEventListener('click', openStats);
+  els.statsBtn?.addEventListener('click', openStats);
 
-  // go
+  // backdrop/ESC closes dialog
+  els.statsModal?.addEventListener('click', e=>{ if(e.target === els.statsModal) els.statsModal.close(); });
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && els.statsModal?.open) els.statsModal.close(); });
+
   loadFromSheet().catch(console.error);
 }
 
-// run when DOM is ready (prevents null .content)
 if (document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', init);
 } else {
