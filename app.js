@@ -1,5 +1,5 @@
 /* -------------------------------------------------------
-   Vinyl Collection — cover images with simple skeleton loader
+   Vinyl Collection — progressive image hydration + wiki fix
    CSV Source:
    https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
 --------------------------------------------------------*/
@@ -104,13 +104,40 @@ function parseCSV(text){
 }
 
 // ---------- 4) Image helpers ----------
+const IMG_EXT_RE = /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i;
+function isImageUrl(u){ return IMG_EXT_RE.test(u||""); }
+function isWikipediaPage(u){ return /^https?:\/\/[^/]*wikipedia\.org\/wiki\/[^]+/i.test(u||""); }
+
 function prox(url){
   if(!url) return "";
-  // Use wsrv.nl correctly (NO "ssl:" prefix)
+  // wsrv.nl proxies actual image files
   return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
-function firstNonEmpty(...vals){
-  for(const v of vals){ if(v && String(v).trim()) return String(v).trim(); }
+
+async function wikipediaLeadImage(pageUrl){
+  try{
+    const m = pageUrl.match(/\/wiki\/([^?#]+)/i);
+    if(!m) return "";
+    const title = decodeURIComponent(m[1]);
+    const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+    if(!r.ok) return "";
+    const j = await r.json();
+    const src = j?.originalimage?.source || j?.thumbnail?.source || "";
+    return src || "";
+  }catch{
+    return "";
+  }
+}
+
+async function resolveCoverUrl(raw){
+  const url = (raw||"").trim();
+  if(!url) return "";
+  if(isImageUrl(url)) return prox(url);
+  if(isWikipediaPage(url)){
+    const lead = await wikipediaLeadImage(url);
+    return lead ? prox(lead) : "";
+  }
+  // Other non-image pages (Apple Music, store pages) → no scrape, use placeholder.
   return "";
 }
 
@@ -141,34 +168,70 @@ async function loadFromSheet(){
       const artist  = pick(r, HEADER_ALIASES.artist);
       const genre   = pick(r, HEADER_ALIASES.genre);
       const notes   = pick(r, HEADER_ALIASES.notes);
-      const cover   = firstNonEmpty(pick(r, HEADER_ALIASES.cover), pick(r, HEADER_ALIASES.altCover));
-      return { title, artist, genre, notes, cover };
+      const coverRaw= pick(r, HEADER_ALIASES.cover);
+      const altRaw  = pick(r, HEADER_ALIASES.altCover);
+      const cover   = coverRaw || altRaw || "";
+      return { title, artist, genre, notes, cover, coverResolved: "" };
     }).filter(x => x.title || x.artist);
 
     state.all = normalized;
     state.filtered = [...normalized];
     applySort();
-    render();
+    render();                // render immediately with skeletons
     $('#status')?.remove();
+
+    // progressively hydrate covers (fast UX) with small concurrency
+    hydrateCovers(state.all, 8);
   }catch(e){
     console.error(e);
     showStatus("Couldn’t load your Google Sheet. Check the URL or try again.");
   }
 }
 
+// Progressive hydration with a concurrency cap
+async function hydrateCovers(recs, limit=8){
+  let idx = 0;
+  async function worker(){
+    while(idx < recs.length){
+      const i = idx++;
+      const url = await resolveCoverUrl(recs[i].cover);
+      recs[i].coverResolved = url;
+      updateCardImage(i, url);
+    }
+  }
+  await Promise.all(Array.from({length:Math.max(1,Math.min(limit,recs.length))}, worker));
+}
+
+// Update a single card in DOM when its image resolves
+function updateCardImage(i, url){
+  // Check both views (whichever is visible now)
+  const roots = [els.scroller, els.grid];
+  for(const root of roots){
+    if(!root) continue;
+    const card = root.querySelector(`.card[data-idx="${i}"]`);
+    if(!card) continue;
+    const img = card.querySelector('.cover');
+    img.src = url || PLACEHOLDER;
+    // in case it was already loaded: ensure visible
+    img.onload = ()=> card.classList.add('loaded');
+    img.onerror = ()=> { img.src = PLACEHOLDER; card.classList.add('loaded'); };
+    break;
+  }
+}
+
 // ---------- 6) Rendering ----------
-function createCard(rec){
+function createCard(rec, idx){
   const tpl = els.tpl.content.cloneNode(true);
   const card   = tpl.querySelector('.card');
   const img    = tpl.querySelector('.cover');
-  const skel   = tpl.querySelector('.skeleton');
-
   const titleE = tpl.querySelector('.title');
   const artistE= tpl.querySelector('.artist');
   const genreE = tpl.querySelector('.genre');
   const notesE = tpl.querySelector('.notes');
   const capT   = tpl.querySelector('.caption-title');
   const capA   = tpl.querySelector('.caption-artist');
+
+  card.dataset.idx = idx;
 
   const safeTitle  = rec.title  || "Untitled";
   const safeArtist = rec.artist || "Unknown Artist";
@@ -180,20 +243,18 @@ function createCard(rec){
   genreE.innerHTML    = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
   notesE.textContent  = rec.notes || "";
 
-  const src = rec.cover ? prox(rec.cover) : "";
+  // Initial src = resolved (if we already have it) or placeholder.
+  const src = rec.coverResolved || "";
   img.alt = `${safeTitle} — ${safeArtist}`;
   img.src = src || PLACEHOLDER;
 
-  img.addEventListener('load', ()=>{
-    // When loaded successfully, reveal image
-    card.classList.add('loaded');
-  }, { once:true });
-
-  img.addEventListener('error', ()=>{
-    // Fallback to placeholder if image fails
-    img.src = PLACEHOLDER;
-    card.classList.add('loaded');
-  }, { once:true });
+  if(src){
+    img.addEventListener('load', ()=> card.classList.add('loaded'), { once:true });
+    img.addEventListener('error', ()=> { img.src = PLACEHOLDER; card.classList.add('loaded'); }, { once:true });
+  }else{
+    // placeholder visible immediately
+    requestAnimationFrame(()=> card.classList.add('loaded'));
+  }
 
   // flip on click
   card.addEventListener('click', (e)=>{
@@ -208,14 +269,13 @@ function createCard(rec){
 function renderScroll(){
   const root = els.scroller;
   root.innerHTML = "";
-  state.filtered.forEach(rec => root.appendChild(createCard(rec)));
-  // start at the very first card
-  root.scrollLeft = 0;
+  state.filtered.forEach((rec,i) => root.appendChild(createCard(rec,i)));
+  root.scrollLeft = 0; // always start at the first card
 }
 function renderGrid(){
   const root = els.grid;
   root.innerHTML = "";
-  state.filtered.forEach(rec => root.appendChild(createCard(rec)));
+  state.filtered.forEach((rec,i) => root.appendChild(createCard(rec,i)));
 }
 
 function render(){
