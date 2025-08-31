@@ -1,5 +1,5 @@
 /* -------------------------------------------------------
-   Vinyl Collection — app logic
+   Vinyl Collection — avatar-only version (no artwork fetch)
    CSV Source:
    https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
 --------------------------------------------------------*/
@@ -13,22 +13,24 @@ const HEADER_ALIASES = {
   artist:   ["artist","artists","band"],
   genre:    ["genre","genres","style","category"],
   notes:    ["notes","special notes","comment","comments","description"],
+  // cover/altCover ignored now, but kept so future switch is easy
   cover:    ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"],
   altCover: ["alt artwork","alt cover","alternate artwork","alternate cover"]
 };
 
-// Compact SVG placeholder (vinyl disc) – white on dark
-const PLACEHOLDER = `data:image/svg+xml;utf8,
-<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'>
-  <rect width='200' height='200' rx='20' fill='%23121a22'/>
-  <circle cx='100' cy='100' r='70' fill='%23fff'/>
-  <circle cx='100' cy='100' r='18' fill='%23121a22'/>
-  <g stroke='%23121a22' stroke-width='6' fill='none' stroke-linecap='round'>
-    <path d='M130 60a55 55 0 0 1 20 32'/>
-    <path d='M65 69a55 55 0 0 0-16 31'/>
-    <path d='M68 132a55 55 0 0 0 31 16'/>
-  </g>
-</svg>`;
+// Pretty gradient palettes for avatars
+const PALETTES = [
+  ["#6b8cff","#a573ff"],
+  ["#ff8a8a","#ffc06b"],
+  ["#6be7c1","#58a6ff"],
+  ["#f6d365","#fda085"],
+  ["#84fab0","#8fd3f4"],
+  ["#b6fbff","#83a4d4"],
+  ["#f093fb","#f5576c"],
+  ["#5ee7df","#b490ca"],
+  ["#ffd3a5","#fd6585"],
+  ["#a1c4fd","#c2e9fb"]
+];
 
 // ---------- 1) Elements ----------
 const $  = (s, r=document) => r.querySelector(s);
@@ -44,7 +46,6 @@ const els = {
   statsBtn:   $('#btnStats'),
   grid:       $('#grid'),
   scroller:   $('#scroller'),
-  scrollWrap: $('.scroller-wrap'),
   statsDlg:   $('#statsModal'),
   statsBody:  $('#statsBody'),
   tpl:        $('#cardTpl')
@@ -101,18 +102,19 @@ function parseCSV(text){
   return { header, data };
 }
 
-// ---------- 4) Artwork helpers ----------
-function looksLikeImage(u){ return /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i.test(u||""); }
-// Use smaller images for speed (700x700, webp)
-function wsrv(url){
-  if(!url) return "";
-  const u = url.replace(/^https?:\/\//, "");
-  return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+u)}&w=700&h=700&fit=cover&output=webp&q=82`;
+// ---------- 4) Avatar helpers ----------
+function initialsFrom(name=""){
+  const n = name.trim();
+  if(!n) return "?";
+  const parts = n.split(/\s+/).filter(Boolean);
+  // single letter for a clean look
+  return parts[0][0].toUpperCase();
 }
-function chooseCover(coverRaw, altRaw){
-  if (looksLikeImage(coverRaw)) return wsrv(coverRaw);
-  if (looksLikeImage(altRaw))   return wsrv(altRaw);
-  return ""; // will fall back to placeholder
+function gradientFor(name=""){
+  let h = 0;
+  for(let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
+  const [c1,c2] = PALETTES[h % PALETTES.length];
+  return `linear-gradient(135deg, ${c1}, ${c2})`;
 }
 
 // ---------- 5) Loader ----------
@@ -142,10 +144,8 @@ async function loadFromSheet(){
       const artist  = pick(r, HEADER_ALIASES.artist);
       const genre   = pick(r, HEADER_ALIASES.genre);
       const notes   = pick(r, HEADER_ALIASES.notes);
-      const coverRaw    = pick(r, HEADER_ALIASES.cover);
-      const altCoverRaw = pick(r, HEADER_ALIASES.altCover);
-      const cover  = chooseCover(coverRaw, altCoverRaw);
-      return { title, artist, genre, notes, cover };
+      // ignore cover/altCover now
+      return { title, artist, genre, notes };
     }).filter(x => x.title || x.artist);
 
     state.all = normalized;
@@ -159,33 +159,13 @@ async function loadFromSheet(){
   }
 }
 
-// ---------- 6) Rendering / Images ----------
-const io = new IntersectionObserver((entries)=>{
-  for(const ent of entries){
-    if(ent.isIntersecting){
-      const img = ent.target;
-      const skel = img.previousElementSibling;
-      const src = img.dataset.src || PLACEHOLDER;
-      // attach fallback first, then set src
-      img.addEventListener('error', ()=>{
-        img.src = PLACEHOLDER;
-        skel?.classList.add('hide-skel');
-      }, { once:true });
-      img.addEventListener('load', ()=>{
-        skel?.classList.add('hide-skel');
-      }, { once:true });
-
-      img.src = src;
-      io.unobserve(img);
-    }
-  }
-}, { rootMargin: "300px 0px" }); // fewer concurrent loads → faster
-
+// ---------- 6) Rendering ----------
 function createCard(rec){
   const tpl = els.tpl.content.cloneNode(true);
   const card   = tpl.querySelector('.card');
-  const front  = tpl.querySelector('.front .cover');
-  const skel   = tpl.querySelector('.cover-skel');
+  const avatar = tpl.querySelector('.avatar');
+  const initE  = tpl.querySelector('.avatar .initial');
+
   const titleE = tpl.querySelector('.title');
   const artistE= tpl.querySelector('.artist');
   const genreE = tpl.querySelector('.genre');
@@ -195,6 +175,7 @@ function createCard(rec){
 
   const safeTitle  = rec.title  || "Untitled";
   const safeArtist = rec.artist || "Unknown Artist";
+
   capT.textContent = safeTitle;
   capA.textContent = safeArtist;
   titleE.textContent  = safeTitle;
@@ -202,10 +183,8 @@ function createCard(rec){
   genreE.innerHTML    = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
   notesE.textContent  = rec.notes || "";
 
-  // lazy image or placeholder immediately
-  front.setAttribute('alt', `${safeTitle} — ${safeArtist}`);
-  front.dataset.src = rec.cover || PLACEHOLDER;
-  io.observe(front);
+  initE.textContent   = initialsFrom(safeArtist);
+  avatar.style.setProperty('--avbg', gradientFor(safeArtist));
 
   // flip on click
   card.addEventListener('click', (e)=>{
@@ -222,7 +201,6 @@ function renderScroll(){
   root.innerHTML = "";
   state.filtered.forEach(rec => root.appendChild(createCard(rec)));
 }
-
 function renderGrid(){
   const root = els.grid;
   root.innerHTML = "";
