@@ -5,17 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vinyl Collection</title>
 
+  <!-- Icons (use your provided files) -->
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css">
-  <meta name="theme-color" content="#0F141B">
 
+  <meta name="theme-color" content="#0f1319" />
+
+  <!-- Fonts & CSS -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header class="site-header" id="siteHeader">
+  <header class="site-header">
     <div class="brand">
       <span class="logo">🎵</span>
       <h1>Vinyl Collection</h1>
@@ -26,61 +30,70 @@
 
       <div class="btn-row">
         <div class="segmented" role="tablist" aria-label="View toggle">
-          <button id="viewScroll" class="btn seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
-          <button id="viewGrid"   class="btn seg-btn"         role="tab" aria-selected="false">View: Grid</button>
+          <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
+          <button id="view-grid"   class="seg-btn"         role="tab" aria-selected="false">View: Grid</button>
         </div>
 
-        <select id="sortSelect" class="btn">
+        <select id="sort" class="btn">
           <option value="title">Sort: Title</option>
           <option value="artist">Sort: Artist</option>
         </select>
 
-        <button id="btnShuffle" class="btn">Shuffle</button>
+        <button id="shuffle" class="btn">Shuffle</button>
 
-        <a id="btnSheet" class="btn" href="https://docs.google.com/spreadsheets/d/1wNsjoZ5UcucOrTUokWfETyx_C5xMKtwWZ7LeDjdi6sI/edit?usp=sharing" target="_blank" rel="noopener">Google Sheet</a>
+        <!-- Styled like a button (no underline) -->
+        <a id="sheetLink" class="btn"
+           href="https://docs.google.com/spreadsheets/d/1wNsjoZ5UcucOrTUokWfETyx_C5xMKtwWZ7LeDjdi6sI/edit?usp=sharing"
+           target="_blank" rel="noopener">Google Sheet</a>
 
-        <button id="btnStats" class="btn">Stats</button>
+        <button id="statsBtn" class="btn">Stats</button>
       </div>
     </div>
   </header>
 
   <main>
     <!-- Scroll view -->
-    <section class="view scroller-wrap active" aria-label="Scroll view">
-      <button class="nav-arrow left" aria-label="Previous"><span class="chev chev-left"></span></button>
-      <div class="scroller" id="scroller" role="list"></div>
-      <button class="nav-arrow right" aria-label="Next"><span class="chev chev-right"></span></button>
+    <section id="scrollView" class="view view-scroll active" aria-label="Scroll view">
+      <div id="scrollerWrap" class="scroller-wrap">
+        <button id="scrollPrev" class="nav-arrow left" aria-label="Previous">
+          <span class="chev chev-left"></span>
+        </button>
+        <div id="scroller" class="scroller" tabindex="0" role="list"></div>
+        <button id="scrollNext" class="nav-arrow right" aria-label="Next">
+          <span class="chev chev-right"></span>
+        </button>
+      </div>
     </section>
 
     <!-- Grid view -->
-    <section class="view grid-wrap" aria-label="Grid view">
+    <section id="gridView" class="view view-grid" aria-label="Grid view">
       <div id="grid" class="grid" role="list"></div>
     </section>
   </main>
 
   <!-- Stats -->
   <dialog id="statsModal">
-    <form method="dialog" class="stats-card">
-      <h2>Collection Stats</h2>
-      <button class="btn dialog-close" value="close" aria-label="Close">Close</button>
+    <div class="stats-card">
+      <div class="stats-head">
+        <h2>Collection Stats</h2>
+        <form method="dialog"><button class="btn small">Close</button></form>
+      </div>
       <div id="statsBody" class="stats-body"></div>
-    </form>
+    </div>
   </dialog>
 
   <!-- Card template -->
   <template id="cardTpl">
-    <article class="card loading" role="listitem" tabindex="0">
+    <article class="card" role="listitem">
       <div class="sleeve" aria-live="polite">
         <div class="face front">
-          <!-- Skeleton while image loads -->
-          <div class="skeleton"></div>
-          <img class="cover" alt="" loading="lazy" referrerpolicy="no-referrer" fetchpriority="low">
+          <img class="cover" alt="" loading="lazy" referrerpolicy="no-referrer">
         </div>
         <div class="face back">
           <div class="meta">
             <h3 class="title"></h3>
             <p class="artist"></p>
-            <div class="genre"></div>
+            <p class="genre"></p>
             <p class="notes"></p>
           </div>
         </div>
@@ -92,43 +105,7 @@
     </article>
   </template>
 
-<!-- Add Quagga2 BEFORE app.js -->
-<script src="https://unpkg.com/@ericblade/quagga2/dist/quagga.js"></script>
-
-<!-- In your header controls button row, add: -->
-<button id="scanBtn" class="btn">Scan UPC</button>
-
-<!-- Scanner Dialog (put near the bottom, before </body>) -->
-<dialog id="scanDialog" class="scan-dialog">
-  <form method="dialog" class="scan-card" id="scanForm">
-    <div class="scan-head">
-      <h3>Scan a UPC</h3>
-      <button type="button" class="btn ghost" id="scanClose">Close</button>
-    </div>
-
-    <div id="scannerViewport" class="scanner-box">
-      <div class="scan-reticle"></div>
-      <div class="scan-help">Point at the barcode. Hold steady.</div>
-    </div>
-
-    <div id="scanResult" class="scan-result" hidden>
-      <div class="scan-code">UPC: <span id="upcText"></span></div>
-      <div class="scan-form-grid">
-        <label>Artist <input id="scanArtist" required></label>
-        <label>Title  <input id="scanTitle" required></label>
-        <label>Notes  <input id="scanNotes" placeholder="Optional"></label>
-        <label>Cover URL <input id="scanCover" placeholder="https://... (optional)"></label>
-      </div>
-      <div class="scan-actions">
-        <button class="btn" id="scanSave" type="button">Save to Sheet</button>
-        <button class="btn ghost" id="scanAgain" type="button">Scan Again</button>
-      </div>
-      <input type="hidden" id="scanUPC">
-    </div>
-  </form>
-</dialog>
-
-  
+  <!-- No PapaParse, no Service Worker -->
   <script src="/app.js"></script>
 </body>
 </html>
