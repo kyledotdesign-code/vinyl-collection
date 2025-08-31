@@ -1,11 +1,15 @@
 /* -------------------------------------------
    Vinyl Collection — app.js (no Papa, no SW)
-   Uses your published CSV sheet + image resolver
+   Adds UPC scanner → MusicBrainz lookup → Apps Script add
 --------------------------------------------*/
 
 // 0) CONFIG
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
+
+// Your Google Apps Script Web App URL (from your earlier message)
+const APPS_SCRIPT_URL =
+  "https://script.google.com/macros/s/AKfycbwpf5emXEyiy-vTaq7bnZzOzC7TxFSy53XqO9mId1wTSze0m-KLxyrbnWRT0xohwK4TRg/exec";
 
 // 1) ELEMENTS
 const $ = (s, r = document) => r.querySelector(s);
@@ -26,6 +30,17 @@ const els = {
   cardTpl: $('#cardTpl'),
   scrollView: $('#scrollView'),
   gridView: $('#gridView'),
+  // Scan
+  scanBtn: $('#scanBtn'),
+  scanModal: $('#scanModal'),
+  scanVideo: $('#scanVideo'),
+  scanCanvas: $('#scanCanvas'),
+  scanHint: $('#scanHint'),
+  startScan: $('#startScan'),
+  stopScan: $('#stopScan'),
+  manualUPC: $('#manualUPC'),
+  closeScan: $('#closeScan'),
+  scanStatus: $('#scanStatus'),
 };
 
 // 2) STATE
@@ -34,6 +49,12 @@ const state = {
   filtered: [],
   sortKey: 'title', // 'title' | 'artist'
   view: 'scroll',   // 'scroll' | 'grid'
+  // Scan
+  mediaStream: null,
+  scanning: false,
+  rafId: null,
+  detectorSupported: 'BarcodeDetector' in window,
+  detector: null,
 };
 
 // 3) CSV PARSER
@@ -75,6 +96,7 @@ const HEADER_ALIASES = {
   notes:  ["notes","special notes","comment","comments","description"],
   cover:  ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"],
   alt:    ["alt artwork","alt image","alt cover","alt art"],
+  upc:    ["upc","barcode","ean"],
 };
 function pickField(row, keys){
   const map = {};
@@ -90,13 +112,9 @@ function pickField(row, keys){
 
 // 5) ARTWORK HELPERS
 function looksLikeImage(u){ return /\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(u||""); }
-
-// Use proxy only for actual image URLs
 function wsrv(url){
   return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
-
-// Wikipedia page → lead image URL
 async function fromWikipediaPage(pageUrl){
   const m = pageUrl.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i);
   if(!m) return "";
@@ -108,8 +126,6 @@ async function fromWikipediaPage(pageUrl){
     return j?.originalimage?.source || j?.thumbnail?.source || "";
   }catch{ return ""; }
 }
-
-// Decide cover for a row
 async function chooseCover(coverRaw, altRaw){
   const candidate = coverRaw || altRaw || "";
   if (!candidate) return "";
@@ -121,11 +137,8 @@ async function chooseCover(coverRaw, altRaw){
     const img = await fromWikipediaPage(candidate);
     return img ? wsrv(img) : "";
   }
-  // Unknown HTML pages (Apple/Spotify/shops) → skip
   return "";
 }
-
-// Placeholder SVG (letter badge)
 function placeholderFor(textA, textB){
   const letter = (textB || textA || "?").trim().charAt(0).toUpperCase() || "?";
   const bg = "#1b2330";
@@ -158,8 +171,9 @@ async function loadFromSheet(){
     const genre  = pickField(row, HEADER_ALIASES.genre);
     const coverRaw = pickField(row, HEADER_ALIASES.cover);
     const altRaw   = pickField(row, HEADER_ALIASES.alt);
+    const upc      = pickField(row, HEADER_ALIASES.upc);
     if (!title && !artist) continue;
-    records.push({ title, artist, notes, genre, coverRaw, altRaw, cover:"" });
+    records.push({ title, artist, notes, genre, coverRaw, altRaw, upc, cover:"" });
   }
 
   // Render fast with placeholders first
@@ -170,8 +184,6 @@ async function loadFromSheet(){
   await resolveCovers(records, 6);
   render();            // now swap to real covers where available
 }
-
-// Resolve covers with small concurrency
 async function resolveCovers(records, concurrency = 6){
   let i = 0;
   const workers = Array.from({length: concurrency}, async ()=> {
@@ -247,19 +259,15 @@ function createCard(rec){
   node.addEventListener('click', ()=> node.classList.toggle('flipped'));
   return node;
 }
-
 function renderScroll(){
   els.scroller.innerHTML = '';
   state.filtered.forEach(r => els.scroller.appendChild(createCard(r)));
-  // start at the very first card
   els.scroller.scrollLeft = 0;
 }
-
 function renderGrid(){
   els.grid.innerHTML = '';
   state.filtered.forEach(r => els.grid.appendChild(createCard(r)));
 }
-
 function render(){
   const isScroll = state.view === 'scroll';
   els.scrollView.classList.toggle('active', isScroll);
@@ -367,7 +375,236 @@ function openStats(){
 }
 els.statsBtn.addEventListener('click', openStats);
 
-// 12) KICKOFF
+// 12) UPC LOOKUP (MusicBrainz + Cover Art Archive)
+async function lookupByUPC(upc){
+  // MusicBrainz search by barcode
+  const url = `https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
+  const r = await fetch(url, { headers: { 'Accept': 'application/json' }});
+  if(!r.ok) throw new Error('MusicBrainz request failed');
+  const j = await r.json();
+  const releases = j?.releases || [];
+  if (!releases.length) throw new Error('No releases found for that UPC');
+
+  // Heuristic: prefer releases with cover-art-archive present, or highest score
+  releases.sort((a,b)=>{
+    const ac = (a['cover-art-archive']?.front?1:0) - (b['cover-art-archive']?.front?1:0);
+    if (ac !== 0) return -ac;
+    return (b.score||0) - (a.score||0);
+  });
+  const rel = releases[0];
+
+  const mbid = rel.id;
+  const title = rel.title || '';
+  const artist = (rel['artist-credit']||[])
+    .map(c=>c?.name || c?.artist?.name)
+    .filter(Boolean)
+    .join(', ') || (rel['artist-credit-phrase'] || '');
+
+  // Try to get cover art (front)
+  let coverUrl = "";
+  try{
+    // Cover Art Archive: direct front image (will 302 to actual image)
+    // Use a size param if available; otherwise, fetch JSON to get preferred.
+    const artJson = await fetch(`https://coverartarchive.org/release/${mbid}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (artJson.ok){
+      const art = await artJson.json();
+      const front = (art.images||[]).find(img=>img.front) || art.images?.[0];
+      coverUrl = front?.image || "";
+    } else {
+      // fall back to standard front url
+      coverUrl = `https://coverartarchive.org/release/${mbid}/front`;
+    }
+  }catch{ /* ignore */ }
+
+  return {
+    title, artist, upc,
+    coverRaw: coverUrl || "",
+    altRaw: "",
+    notes: "",
+    genre: "", // unknown from MB; you can fill later
+  };
+}
+
+// 13) ADD TO GOOGLE SHEET (Apps Script)
+async function addRecordToSheet(rec){
+  // Customize to your sheet column names in the script.
+  // This sends JSON { title, artist, upc, genre, notes, cover, alt }.
+  const payload = {
+    title: rec.title || "",
+    artist: rec.artist || "",
+    upc: rec.upc || "",
+    genre: rec.genre || "",
+    notes: rec.notes || "",
+    cover: rec.coverRaw || "",
+    alt: rec.altRaw || "",
+  };
+
+  const resp = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    mode: 'cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if(!resp.ok){
+    const t = await resp.text().catch(()=> "");
+    throw new Error(`Apps Script error (${resp.status}): ${t || 'Unknown error'}`);
+  }
+  // You may return the response JSON if your script echoes the row back
+  return resp.json().catch(()=> ({}));
+}
+
+// 14) OPTIMISTIC ADD + REFRESH
+async function addToCollection(rec){
+  // Prepare image cover
+  rec.cover = await chooseCover(rec.coverRaw, rec.altRaw);
+
+  // Optimistically add to UI
+  state.all.unshift(rec);
+  state.filtered = [...state.all];
+  applySort();
+  render();
+
+  // Persist to Sheet
+  try{
+    await addRecordToSheet(rec);
+    // Try to re-pull the sheet to stay in sync
+    // (optional; comment out if you prefer)
+    // await loadFromSheet();
+  }catch(e){
+    console.error(e);
+    alert("Saved locally, but failed to add to sheet:\n" + e.message);
+  }
+}
+
+// 15) SCANNER UI + LOGIC
+async function startCamera(){
+  // Prefer environment/back camera
+  const constraints = {
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1280 }, height: { ideal: 720 }
+    },
+    audio: false
+  };
+  state.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+  els.scanVideo.srcObject = state.mediaStream;
+  await els.scanVideo.play();
+}
+function stopCamera(){
+  if (state.mediaStream){
+    for (const t of state.mediaStream.getTracks()){
+      t.stop();
+    }
+    state.mediaStream = null;
+  }
+  els.scanVideo.pause();
+  els.scanVideo.srcObject = null;
+}
+
+async function scanLoop(){
+  if (!state.scanning) return;
+
+  try{
+    if (state.detector){
+      const codes = await state.detector.detect(els.scanVideo);
+      if (codes && codes.length){
+        const upcRaw = (codes[0].rawValue || "").trim();
+        if (upcRaw){
+          await handleUPC(upcRaw);
+          return; // handled, stop scanning
+        }
+      }
+    } else {
+      // Fallback: capture a frame and (optionally) run your own decode lib.
+      // For now, we stop here and ask for manual entry if detector unsupported.
+    }
+  }catch(err){
+    console.error('scanLoop error', err);
+  }
+
+  state.rafId = requestAnimationFrame(scanLoop);
+}
+
+async function handleUPC(upc){
+  // Stop scanning
+  state.scanning = false;
+  if (state.rafId) cancelAnimationFrame(state.rafId);
+  stopCamera();
+  els.scanStatus.textContent = `Found UPC: ${upc}. Looking up…`;
+
+  try{
+    const rec = await lookupByUPC(upc);
+    els.scanStatus.textContent = `Found: ${rec.artist} — ${rec.title}. Adding…`;
+    await addToCollection(rec);
+    els.scanStatus.textContent = `Added to your collection (and sent to Sheet).`;
+    setTimeout(()=> els.scanModal.close(), 600);
+  }catch(e){
+    console.error(e);
+    els.scanStatus.textContent = `Couldn’t find that UPC automatically. You can enter details manually later.`;
+  }
+}
+
+function openScanModal(){
+  els.scanStatus.textContent = '';
+  els.scanModal.showModal();
+}
+function closeScanModal(){
+  state.scanning = false;
+  if (state.rafId) cancelAnimationFrame(state.rafId);
+  stopCamera();
+  els.scanModal.close();
+}
+
+// Events
+els.scanBtn.addEventListener('click', openScanModal);
+els.closeScan?.addEventListener('click', closeScanModal);
+
+els.startScan.addEventListener('click', async ()=>{
+  els.scanStatus.textContent = '';
+  try{
+    if (state.detectorSupported && !state.detector){
+      // We request common barcodes (UPC/EAN)
+      // Types are hints; browser chooses internally if not supported.
+      try{
+        state.detector = new window.BarcodeDetector({
+          formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39']
+        });
+      }catch{
+        // Some browsers require no formats in constructor
+        state.detector = new window.BarcodeDetector();
+      }
+    }
+    await startCamera();
+    state.scanning = true;
+    els.scanHint.textContent = 'Point your camera at the barcode.';
+    scanLoop();
+  }catch(e){
+    console.error(e);
+    els.scanStatus.textContent = 'Camera unavailable. You can enter UPC manually.';
+  }
+});
+
+els.stopScan.addEventListener('click', ()=>{
+  state.scanning = false;
+  if (state.rafId) cancelAnimationFrame(state.rafId);
+  stopCamera();
+  els.scanStatus.textContent = 'Stopped.';
+});
+
+els.manualUPC.addEventListener('click', async ()=>{
+  const upc = prompt("Enter UPC (numbers only):") || "";
+  const trimmed = upc.replace(/\D+/g,'').trim();
+  if (!trimmed){
+    els.scanStatus.textContent = 'No UPC entered.';
+    return;
+  }
+  await handleUPC(trimmed);
+});
+
+// 16) KICKOFF
 loadFromSheet().catch(err=>{
   console.error(err);
   alert("Couldn’t load the Google Sheet. Make sure your link is published as CSV (output=csv).");
