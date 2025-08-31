@@ -5,6 +5,10 @@
    - or camelCase versions (#viewScroll, #viewGrid, #sortSelect, #btnShuffle, #btnStats)
 -------------------------------------------------------- */
 
+// Replace with YOUR Apps Script Web App URL from step 1
+const APP_SCRIPT_URL = "PASTE_YOUR_WEB_APP_URL_HERE";
+
+
 // 0) CONFIG
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
