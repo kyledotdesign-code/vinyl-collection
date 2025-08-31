@@ -14,10 +14,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-
-  <!-- Speed up art proxy DNS/TLS -->
-  <link rel="preconnect" href="https://wsrv.nl" crossorigin>
-  <link rel="dns-prefetch" href="//wsrv.nl">
 </head>
 <body>
   <header class="site-header" id="siteHeader">
@@ -77,8 +73,10 @@
     <article class="card" role="listitem" tabindex="0">
       <div class="sleeve" aria-live="polite">
         <div class="face front">
-          <div class="cover-skel"></div>
-          <img class="cover" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
+          <!-- Avatar circle replaces artwork -->
+          <div class="avatar" role="presentation">
+            <span class="initial">?</span>
+          </div>
         </div>
         <div class="face back">
           <div class="meta">
