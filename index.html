@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="/styles.css">
   <meta name="theme-color" content="#0F141B">
 
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -70,13 +69,12 @@
 
   <!-- Card template -->
   <template id="cardTpl">
-    <article class="card" role="listitem" tabindex="0">
+    <article class="card loading" role="listitem" tabindex="0">
       <div class="sleeve" aria-live="polite">
         <div class="face front">
-          <!-- Avatar circle replaces artwork -->
-          <div class="avatar" role="presentation">
-            <span class="initial">?</span>
-          </div>
+          <!-- Skeleton while image loads -->
+          <div class="skeleton"></div>
+          <img class="cover" alt="" loading="lazy" referrerpolicy="no-referrer" fetchpriority="low">
         </div>
         <div class="face back">
           <div class="meta">
