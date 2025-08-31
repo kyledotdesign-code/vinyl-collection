@@ -6,7 +6,7 @@
 -------------------------------------------------------- */
 
 // Replace with YOUR Apps Script Web App URL from step 1
-const APP_SCRIPT_URL = "PASTE_YOUR_WEB_APP_URL_HERE";
+const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwpf5emXEyiy-vTaq7bnZzOzC7TxFSy53XqO9mId1wTSze0m-KLxyrbnWRT0xohwK4TRg/exec";
 
 // ----- UPC Scanner (Quagga2) + Sheet append ----- //
 const scanEls = {
