@@ -29,6 +29,9 @@
       <input id="search" type="search" placeholder="Search" autocomplete="off" />
 
       <div class="btn-row">
+        <!-- NEW: Scan button before View: Scroll -->
+        <button id="scanBtn" class="btn">Scan UPC</button>
+
         <div class="segmented" role="tablist" aria-label="View toggle">
           <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
           <button id="view-grid"   class="seg-btn"         role="tab" aria-selected="false">View: Grid</button>
@@ -79,6 +82,32 @@
         <form method="dialog"><button class="btn small">Close</button></form>
       </div>
       <div id="statsBody" class="stats-body"></div>
+    </div>
+  </dialog>
+
+  <!-- NEW: Scan modal -->
+  <dialog id="scanModal">
+    <div class="scan-card">
+      <div class="scan-head">
+        <h2>Scan UPC</h2>
+        <form method="dialog"><button class="btn small" id="closeScan">Close</button></form>
+      </div>
+
+      <div class="scan-body">
+        <div class="scan-video-wrap">
+          <video id="scanVideo" playsinline muted></video>
+          <canvas id="scanCanvas" class="hidden"></canvas>
+          <div class="scan-hint" id="scanHint">Point your camera at the barcode.</div>
+        </div>
+
+        <div class="scan-actions">
+          <button class="btn" id="startScan">Start Camera</button>
+          <button class="btn" id="stopScan">Stop</button>
+          <button class="btn" id="manualUPC">Enter UPC Manually</button>
+        </div>
+      </div>
+
+      <div class="scan-footer" id="scanStatus"></div>
     </div>
   </dialog>
 
