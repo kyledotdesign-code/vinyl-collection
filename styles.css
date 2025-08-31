@@ -4,8 +4,8 @@
   --fg: #eaf0f8;
   --muted: #b7c2d2;
   --card: #141a22;
-  --accent: #b8c5ff;     /* soft indigo */
-  --accent-2: #8ef0b0;   /* mint */
+  --accent: #b8c5ff;
+  --accent-2: #8ef0b0;
   --border: #1c2430;
   --btn: #1f2a3a;
   --btn-hi: #2a384c;
@@ -23,14 +23,16 @@ body{
   color:var(--fg);
 }
 
-/* Header */
+/* Fixed (always-sticky) header */
 .site-header{
-  position:sticky; top:0; z-index:20;
+  position:fixed; left:0; right:0; top:0; z-index:100;
   backdrop-filter: blur(10px);
-  background: linear-gradient(to bottom, rgba(15,20,27,.95), rgba(15,20,27,.65) 65%, rgba(15,20,27,0));
+  background-color:#0f141b; /* solid so it never visually disappears */
   border-bottom:1px solid var(--border);
   padding:14px clamp(12px,2vw,28px) 10px;
 }
+body.has-fixed-header main{ padding-top: var(--header-h, 120px); }
+
 .brand{display:flex;align-items:center;gap:10px}
 .brand .logo{font-size:22px}
 .brand h1{margin:0;font-size:clamp(18px,2.4vw,24px);font-weight:800;letter-spacing:.3px}
@@ -110,10 +112,11 @@ main{padding:18px clamp(10px,2vw,28px) 28px}
 .card.flipped .back{transform:rotateY(0deg)}
 .back{transform:rotateY(180deg);display:grid;place-items:center;background:#0e1723}
 .front .cover{width:100%;height:100%;object-fit:cover;display:block;background:#0a0f17}
+
+/* skeleton overlay that hides once image or placeholder appears */
 .cover-skel{position:absolute;inset:0;background:linear-gradient(90deg,#111722,#0f141d 40%,#111722 60%);animation:sh 1.2s infinite;opacity:.6}
 @keyframes sh{0%{background-position:-200px 0} 100%{background-position:200px 0}}
-.img-loaded + .cover{opacity:1}
-.img-loaded{display:none}
+.hide-skel{display:none}
 
 /* Meta + caption (tighter under artist) */
 .meta{padding:14px 16px;text-align:center}
@@ -143,6 +146,5 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,17
 /* Mobile tweaks */
 @media (max-width: 720px){
   .btn-row{justify-content:center}
-  main{padding-top:22px}
   .scroller{grid-auto-columns:minmax(86vw,94vw);gap:16px;padding:14px 52px 26px}
 }
