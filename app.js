@@ -8,6 +8,163 @@
 // Replace with YOUR Apps Script Web App URL from step 1
 const APP_SCRIPT_URL = "PASTE_YOUR_WEB_APP_URL_HERE";
 
+// ----- UPC Scanner (Quagga2) + Sheet append ----- //
+const scanEls = {
+  dialog: document.getElementById('scanDialog'),
+  viewport: document.getElementById('scannerViewport'),
+  openBtn: document.getElementById('scanBtn'),
+  closeBtn: document.getElementById('scanClose'),
+  againBtn: document.getElementById('scanAgain'),
+  saveBtn: document.getElementById('scanSave'),
+  resultWrap: document.getElementById('scanResult'),
+  upcText: document.getElementById('upcText'),
+  upc: document.getElementById('scanUPC'),
+  artist: document.getElementById('scanArtist'),
+  title: document.getElementById('scanTitle'),
+  notes: document.getElementById('scanNotes'),
+  cover: document.getElementById('scanCover'),
+};
+
+let scanning = false;
+let lastDetected = 0;
+
+function startScanner(){
+  if (scanning) return;
+  scanning = true;
+  scanEls.resultWrap.hidden = true;
+
+  const readers = [
+    "upc_reader", "upc_e_reader",
+    "ean_reader", "ean_8_reader" // many UPCs are EAN-13
+  ];
+
+  Quagga.init({
+    inputStream: {
+      type: "LiveStream",
+      target: scanEls.viewport,
+      constraints: {
+        facingMode: "environment",
+        // Safari iPhone likes explicit ideal values:
+        width: { ideal: 1280 },
+        height:{ ideal: 720 }
+      }
+    },
+    locator: { halfSample: true, patchSize: "medium" },
+    decoder: { readers },
+    numOfWorkers: navigator.hardwareConcurrency ? Math.max(2, navigator.hardwareConcurrency - 1) : 2,
+  }, (err) => {
+    if (err) {
+      console.error(err);
+      alert("Camera error. Check permissions and try again.");
+      scanning = false;
+      return;
+    }
+    Quagga.start();
+  });
+
+  Quagga.onDetected(onDetected);
+}
+
+function stopScanner(){
+  try { Quagga.offDetected(onDetected); } catch(e){}
+  try { Quagga.stop(); } catch(e){}
+  scanning = false;
+}
+
+function onDetected(res){
+  const now = Date.now();
+  if (now - lastDetected < 1500) return; // debounce
+  lastDetected = now;
+
+  const code = res?.codeResult?.code || "";
+  if (!code) return;
+
+  // basic UPC/EAN sanity
+  if (!/^\d{8,14}$/.test(code)) return;
+
+  // haptic
+  if (navigator.vibrate) navigator.vibrate([60,20,60]);
+
+  // Show the mini form
+  scanEls.upc.value = code;
+  scanEls.upcText.textContent = code;
+  scanEls.resultWrap.hidden = false;
+
+  // Pause camera while user fills form
+  stopScanner();
+}
+
+async function saveScanned(){
+  const rec = {
+    artist: scanEls.artist.value.trim(),
+    title:  scanEls.title.value.trim(),
+    notes:  scanEls.notes.value.trim(),
+    cover:  scanEls.cover.value.trim(),
+    upc:    scanEls.upc.value.trim(),
+  };
+  if (!rec.artist || !rec.title) {
+    alert("Please fill Artist and Title.");
+    return;
+  }
+
+  // 1) Optimistically add to page immediately
+  const newRec = {
+    artist: rec.artist,
+    title: rec.title,
+    notes: rec.notes,
+    genre: "",               // you can fill later or auto-resolve if you want
+    coverRaw: rec.cover,
+    cover: rec.cover || "",  // your existing rendering already handles empty covers
+  };
+  // Push into your current in-memory list and re-render
+  if (window.state && Array.isArray(state.all)) {
+    state.all.unshift(newRec);
+    state.filtered = [...state.all];
+    if (typeof applySort === 'function') applySort();
+    if (typeof render === 'function') render();
+  }
+
+  // 2) Append to Google Sheet via Apps Script (no-cors; best-effort)
+  if (APP_SCRIPT_URL && APP_SCRIPT_URL.startsWith('https')) {
+    try {
+      await fetch(APP_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors', // avoid CORS preflight; response will be opaque
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(rec)
+      });
+    } catch (e) {
+      console.warn('Sheet write failed (network/CORS). The item still appears locally.', e);
+    }
+  }
+
+  // Reset form & close
+  scanEls.artist.value = '';
+  scanEls.title.value = '';
+  scanEls.notes.value = '';
+  scanEls.cover.value = '';
+  scanEls.upc.value = '';
+  scanEls.resultWrap.hidden = true;
+  scanEls.dialog.close();
+}
+
+scanEls.openBtn?.addEventListener('click', () => {
+  scanEls.dialog.showModal();
+  startScanner();
+});
+
+scanEls.closeBtn?.addEventListener('click', () => {
+  scanEls.dialog.close();
+  stopScanner();
+});
+
+scanEls.againBtn?.addEventListener('click', () => {
+  scanEls.resultWrap.hidden = true;
+  startScanner();
+});
+
+scanEls.saveBtn?.addEventListener('click', saveScanned);
+
 
 // 0) CONFIG
 const SHEET_CSV =
