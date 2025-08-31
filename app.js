@@ -1,6 +1,6 @@
 /* -------------------------------------------------------
-   Vinyl Collection — Single-file app logic
-   CSV Source (Publish to web → CSV):
+   Vinyl Collection — app logic
+   CSV Source:
    https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
 --------------------------------------------------------*/
 
@@ -9,19 +9,33 @@ const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
 
 const HEADER_ALIASES = {
-  title:   ["title","album","record","release"],
-  artist:  ["artist","artists","band"],
-  genre:   ["genre","genres","style","category"],
-  notes:   ["notes","special notes","comment","comments","description"],
-  cover:   ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"],
-  altCover:["alt artwork","alt cover","alternate artwork","alternate cover"]
+  title:    ["title","album","record","release"],
+  artist:   ["artist","artists","band"],
+  genre:    ["genre","genres","style","category"],
+  notes:    ["notes","special notes","comment","comments","description"],
+  cover:    ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"],
+  altCover: ["alt artwork","alt cover","alternate artwork","alternate cover"]
 };
+
+// Compact SVG placeholder (vinyl disc) – white on dark
+const PLACEHOLDER = `data:image/svg+xml;utf8,
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'>
+  <rect width='200' height='200' rx='20' fill='%23121a22'/>
+  <circle cx='100' cy='100' r='70' fill='%23fff'/>
+  <circle cx='100' cy='100' r='18' fill='%23121a22'/>
+  <g stroke='%23121a22' stroke-width='6' fill='none' stroke-linecap='round'>
+    <path d='M130 60a55 55 0 0 1 20 32'/>
+    <path d='M65 69a55 55 0 0 0-16 31'/>
+    <path d='M68 132a55 55 0 0 0 31 16'/>
+  </g>
+</svg>`;
 
 // ---------- 1) Elements ----------
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 
 const els = {
+  header:     $('#siteHeader'),
   search:     $('#search'),
   viewScroll: $('#viewScroll'),
   viewGrid:   $('#viewGrid'),
@@ -36,13 +50,17 @@ const els = {
   tpl:        $('#cardTpl')
 };
 
+// Make body account for fixed header height
+function applyHeaderOffset(){
+  const h = els.header.offsetHeight || 120;
+  document.body.style.setProperty('--header-h', `${h}px`);
+  document.body.classList.add('has-fixed-header');
+}
+window.addEventListener('load', applyHeaderOffset);
+window.addEventListener('resize', applyHeaderOffset);
+
 // ---------- 2) State ----------
-const state = {
-  all: [],
-  filtered: [],
-  view: 'scroll',     // 'scroll' | 'grid'
-  sortKey: 'title'    // 'title' | 'artist'
-};
+const state = { all: [], filtered: [], view: 'scroll', sortKey: 'title' };
 
 // ---------- 3) CSV parsing ----------
 function pick(obj, synonyms){
@@ -53,8 +71,6 @@ function pick(obj, synonyms){
   }
   return "";
 }
-
-// tiny CSV parser (handles quotes)
 function parseCSV(text){
   const rows = [];
   let cur = [''];
@@ -69,7 +85,7 @@ function parseCSV(text){
     } else if ((c === '\n' || c === '\r') && !inQuotes){
       if(cur.length>1 || cur[0] !== '') rows.push(cur);
       cur = [''];
-      if (c === '\r' && text[i+1]==='\n') i++; // CRLF
+      if (c === '\r' && text[i+1]==='\n') i++;
     } else {
       cur[cur.length-1] += c;
     }
@@ -87,16 +103,16 @@ function parseCSV(text){
 
 // ---------- 4) Artwork helpers ----------
 function looksLikeImage(u){ return /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i.test(u||""); }
+// Use smaller images for speed (700x700, webp)
 function wsrv(url){
   if(!url) return "";
   const u = url.replace(/^https?:\/\//, "");
-  return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+u)}&w=1200&h=1200&fit=cover&output=webp&q=85`;
+  return `https://wsrv.nl/?url=${encodeURIComponent("ssl:"+u)}&w=700&h=700&fit=cover&output=webp&q=82`;
 }
 function chooseCover(coverRaw, altRaw){
-  // Only accept direct images; otherwise return empty to show placeholder
   if (looksLikeImage(coverRaw)) return wsrv(coverRaw);
   if (looksLikeImage(altRaw))   return wsrv(altRaw);
-  return "";
+  return ""; // will fall back to placeholder
 }
 
 // ---------- 5) Loader ----------
@@ -126,8 +142,8 @@ async function loadFromSheet(){
       const artist  = pick(r, HEADER_ALIASES.artist);
       const genre   = pick(r, HEADER_ALIASES.genre);
       const notes   = pick(r, HEADER_ALIASES.notes);
-      const coverRaw   = pick(r, HEADER_ALIASES.cover);
-      const altCoverRaw= pick(r, HEADER_ALIASES.altCover);
+      const coverRaw    = pick(r, HEADER_ALIASES.cover);
+      const altCoverRaw = pick(r, HEADER_ALIASES.altCover);
       const cover  = chooseCover(coverRaw, altCoverRaw);
       return { title, artist, genre, notes, cover };
     }).filter(x => x.title || x.artist);
@@ -136,7 +152,6 @@ async function loadFromSheet(){
     state.filtered = [...normalized];
     applySort();
     render();
-    // Remove any old status banner
     $('#status')?.remove();
   }catch(e){
     console.error(e);
@@ -144,27 +159,33 @@ async function loadFromSheet(){
   }
 }
 
-// ---------- 6) Rendering ----------
+// ---------- 6) Rendering / Images ----------
 const io = new IntersectionObserver((entries)=>{
   for(const ent of entries){
     if(ent.isIntersecting){
       const img = ent.target;
-      const src = img.dataset.src;
-      if(src && !img.src){
-        img.src = src;
-        img.addEventListener('load', ()=>{
-          img.previousElementSibling?.classList.add('img-loaded'); // hide skeleton
-        }, { once:true });
-      }
+      const skel = img.previousElementSibling;
+      const src = img.dataset.src || PLACEHOLDER;
+      // attach fallback first, then set src
+      img.addEventListener('error', ()=>{
+        img.src = PLACEHOLDER;
+        skel?.classList.add('hide-skel');
+      }, { once:true });
+      img.addEventListener('load', ()=>{
+        skel?.classList.add('hide-skel');
+      }, { once:true });
+
+      img.src = src;
       io.unobserve(img);
     }
   }
-}, { rootMargin: "800px 0px" });
+}, { rootMargin: "300px 0px" }); // fewer concurrent loads → faster
 
 function createCard(rec){
   const tpl = els.tpl.content.cloneNode(true);
   const card   = tpl.querySelector('.card');
   const front  = tpl.querySelector('.front .cover');
+  const skel   = tpl.querySelector('.cover-skel');
   const titleE = tpl.querySelector('.title');
   const artistE= tpl.querySelector('.artist');
   const genreE = tpl.querySelector('.genre');
@@ -178,22 +199,13 @@ function createCard(rec){
   capA.textContent = safeArtist;
   titleE.textContent  = safeTitle;
   artistE.textContent = safeArtist;
+  genreE.innerHTML    = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
+  notesE.textContent  = rec.notes || "";
 
-  // genre chip (only on back)
-  genreE.innerHTML = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
-
-  // notes (light gray, smaller)
-  notesE.textContent = rec.notes || "";
-
-  // lazy image
-  if (rec.cover){
-    front.setAttribute('alt', `${safeTitle} — ${safeArtist}`);
-    front.dataset.src = rec.cover;
-    io.observe(front);
-  } else {
-    // placeholder
-    front.setAttribute('alt', `${safeTitle} — ${safeArtist}`);
-  }
+  // lazy image or placeholder immediately
+  front.setAttribute('alt', `${safeTitle} — ${safeArtist}`);
+  front.dataset.src = rec.cover || PLACEHOLDER;
+  io.observe(front);
 
   // flip on click
   card.addEventListener('click', (e)=>{
@@ -221,35 +233,26 @@ function render(){
   const isScroll = state.view === 'scroll';
   $('.scroller-wrap').classList.toggle('active', isScroll);
   $('.grid-wrap').classList.toggle('active', !isScroll);
-  if(isScroll) {
-    renderScroll();
-    toggleArrows(true);
-  } else {
-    renderGrid();
-    toggleArrows(false);
-  }
+  if(isScroll) { renderScroll(); toggleArrows(true); }
+  else         { renderGrid();   toggleArrows(false); }
 }
 
 // ---------- 7) Behaviors ----------
-function toggleArrows(show){
-  $$('.nav-arrow').forEach(b=> b.style.display = show ? '' : 'none');
-}
-function smoothScrollBy(px){
-  els.scroller?.scrollBy({ left: px, behavior: 'smooth' });
-}
+function toggleArrows(show){ $$('.nav-arrow').forEach(b=> b.style.display = show ? '' : 'none'); }
+function smoothScrollBy(px){ els.scroller?.scrollBy({ left: px, behavior: 'smooth' }); }
 $('.nav-arrow.left') .addEventListener('click', ()=> smoothScrollBy(-Math.round(els.scroller.clientWidth*0.9)));
 $('.nav-arrow.right').addEventListener('click', ()=> smoothScrollBy(Math.round(els.scroller.clientWidth*0.9)));
 
-els.viewScroll.addEventListener('click', ()=>{
+$('#viewScroll').addEventListener('click', ()=>{
   state.view = 'scroll';
-  els.viewScroll.classList.add('active');
-  els.viewGrid.classList.remove('active');
+  $('#viewScroll').classList.add('active');
+  $('#viewGrid').classList.remove('active');
   render();
 });
-els.viewGrid.addEventListener('click', ()=>{
+$('#viewGrid').addEventListener('click', ()=>{
   state.view = 'grid';
-  els.viewGrid.classList.add('active');
-  els.viewScroll.classList.remove('active');
+  $('#viewGrid').classList.add('active');
+  $('#viewScroll').classList.remove('active');
   render();
 });
 
@@ -262,10 +265,7 @@ els.search.addEventListener('input', (e)=>{
   applySort(); render();
 });
 
-function setSortKey(key){
-  state.sortKey = key;
-  applySort(); render();
-}
+function setSortKey(key){ state.sortKey = key; applySort(); render(); }
 function applySort(){
   const k = state.sortKey;
   state.filtered.sort((a,b)=>{
