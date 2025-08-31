@@ -1,5 +1,5 @@
 /* -------------------------------------------------------
-   Vinyl Collection — avatar-only version (no artwork fetch)
+   Vinyl Collection — cover images with simple skeleton loader
    CSV Source:
    https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
 --------------------------------------------------------*/
@@ -13,24 +13,25 @@ const HEADER_ALIASES = {
   artist:   ["artist","artists","band"],
   genre:    ["genre","genres","style","category"],
   notes:    ["notes","special notes","comment","comments","description"],
-  // cover/altCover ignored now, but kept so future switch is easy
   cover:    ["album artwork","artwork","cover","cover url","image","art","art url","artwork url"],
   altCover: ["alt artwork","alt cover","alternate artwork","alternate cover"]
 };
 
-// Pretty gradient palettes for avatars
-const PALETTES = [
-  ["#6b8cff","#a573ff"],
-  ["#ff8a8a","#ffc06b"],
-  ["#6be7c1","#58a6ff"],
-  ["#f6d365","#fda085"],
-  ["#84fab0","#8fd3f4"],
-  ["#b6fbff","#83a4d4"],
-  ["#f093fb","#f5576c"],
-  ["#5ee7df","#b490ca"],
-  ["#ffd3a5","#fd6585"],
-  ["#a1c4fd","#c2e9fb"]
-];
+// Neutral vinyl placeholder (SVG data URL)
+const PLACEHOLDER =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <defs>
+      <radialGradient id="g" cx="50%" cy="50%" r="60%">
+        <stop offset="0%" stop-color="#2a3140"/>
+        <stop offset="100%" stop-color="#121722"/>
+      </radialGradient>
+    </defs>
+    <circle cx="50" cy="50" r="48" fill="url(#g)"/>
+    <circle cx="50" cy="50" r="8" fill="#0a0f17" stroke="#444e60" stroke-width="2"/>
+    <circle cx="50" cy="50" r="2.5" fill="#ddd"/>
+  </svg>`);
 
 // ---------- 1) Elements ----------
 const $  = (s, r=document) => r.querySelector(s);
@@ -102,19 +103,15 @@ function parseCSV(text){
   return { header, data };
 }
 
-// ---------- 4) Avatar helpers ----------
-function initialsFrom(name=""){
-  const n = name.trim();
-  if(!n) return "?";
-  const parts = n.split(/\s+/).filter(Boolean);
-  // single letter for a clean look
-  return parts[0][0].toUpperCase();
+// ---------- 4) Image helpers ----------
+function prox(url){
+  if(!url) return "";
+  // Use wsrv.nl correctly (NO "ssl:" prefix)
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
-function gradientFor(name=""){
-  let h = 0;
-  for(let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
-  const [c1,c2] = PALETTES[h % PALETTES.length];
-  return `linear-gradient(135deg, ${c1}, ${c2})`;
+function firstNonEmpty(...vals){
+  for(const v of vals){ if(v && String(v).trim()) return String(v).trim(); }
+  return "";
 }
 
 // ---------- 5) Loader ----------
@@ -144,8 +141,8 @@ async function loadFromSheet(){
       const artist  = pick(r, HEADER_ALIASES.artist);
       const genre   = pick(r, HEADER_ALIASES.genre);
       const notes   = pick(r, HEADER_ALIASES.notes);
-      // ignore cover/altCover now
-      return { title, artist, genre, notes };
+      const cover   = firstNonEmpty(pick(r, HEADER_ALIASES.cover), pick(r, HEADER_ALIASES.altCover));
+      return { title, artist, genre, notes, cover };
     }).filter(x => x.title || x.artist);
 
     state.all = normalized;
@@ -163,8 +160,8 @@ async function loadFromSheet(){
 function createCard(rec){
   const tpl = els.tpl.content.cloneNode(true);
   const card   = tpl.querySelector('.card');
-  const avatar = tpl.querySelector('.avatar');
-  const initE  = tpl.querySelector('.avatar .initial');
+  const img    = tpl.querySelector('.cover');
+  const skel   = tpl.querySelector('.skeleton');
 
   const titleE = tpl.querySelector('.title');
   const artistE= tpl.querySelector('.artist');
@@ -183,8 +180,20 @@ function createCard(rec){
   genreE.innerHTML    = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
   notesE.textContent  = rec.notes || "";
 
-  initE.textContent   = initialsFrom(safeArtist);
-  avatar.style.setProperty('--avbg', gradientFor(safeArtist));
+  const src = rec.cover ? prox(rec.cover) : "";
+  img.alt = `${safeTitle} — ${safeArtist}`;
+  img.src = src || PLACEHOLDER;
+
+  img.addEventListener('load', ()=>{
+    // When loaded successfully, reveal image
+    card.classList.add('loaded');
+  }, { once:true });
+
+  img.addEventListener('error', ()=>{
+    // Fallback to placeholder if image fails
+    img.src = PLACEHOLDER;
+    card.classList.add('loaded');
+  }, { once:true });
 
   // flip on click
   card.addEventListener('click', (e)=>{
@@ -200,6 +209,8 @@ function renderScroll(){
   const root = els.scroller;
   root.innerHTML = "";
   state.filtered.forEach(rec => root.appendChild(createCard(rec)));
+  // start at the very first card
+  root.scrollLeft = 0;
 }
 function renderGrid(){
   const root = els.grid;
