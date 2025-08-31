@@ -162,4 +162,171 @@ const io = new IntersectionObserver((entries)=>{
 }, { rootMargin: "800px 0px" });
 
 function createCard(rec){
-  cons
+  const tpl = els.tpl.content.cloneNode(true);
+  const card   = tpl.querySelector('.card');
+  const front  = tpl.querySelector('.front .cover');
+  const titleE = tpl.querySelector('.title');
+  const artistE= tpl.querySelector('.artist');
+  const genreE = tpl.querySelector('.genre');
+  const notesE = tpl.querySelector('.notes');
+  const capT   = tpl.querySelector('.caption-title');
+  const capA   = tpl.querySelector('.caption-artist');
+
+  const safeTitle  = rec.title  || "Untitled";
+  const safeArtist = rec.artist || "Unknown Artist";
+  capT.textContent = safeTitle;
+  capA.textContent = safeArtist;
+  titleE.textContent  = safeTitle;
+  artistE.textContent = safeArtist;
+
+  // genre chip (only on back)
+  genreE.innerHTML = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
+
+  // notes (light gray, smaller)
+  notesE.textContent = rec.notes || "";
+
+  // lazy image
+  if (rec.cover){
+    front.setAttribute('alt', `${safeTitle} — ${safeArtist}`);
+    front.dataset.src = rec.cover;
+    io.observe(front);
+  } else {
+    // placeholder
+    front.setAttribute('alt', `${safeTitle} — ${safeArtist}`);
+  }
+
+  // flip on click
+  card.addEventListener('click', (e)=>{
+    const isArrow = e.target.closest('.nav-arrow');
+    if(isArrow) return;
+    card.classList.toggle('flipped');
+  });
+
+  return tpl;
+}
+
+function renderScroll(){
+  const root = els.scroller;
+  root.innerHTML = "";
+  state.filtered.forEach(rec => root.appendChild(createCard(rec)));
+}
+
+function renderGrid(){
+  const root = els.grid;
+  root.innerHTML = "";
+  state.filtered.forEach(rec => root.appendChild(createCard(rec)));
+}
+
+function render(){
+  const isScroll = state.view === 'scroll';
+  $('.scroller-wrap').classList.toggle('active', isScroll);
+  $('.grid-wrap').classList.toggle('active', !isScroll);
+  if(isScroll) {
+    renderScroll();
+    toggleArrows(true);
+  } else {
+    renderGrid();
+    toggleArrows(false);
+  }
+}
+
+// ---------- 7) Behaviors ----------
+function toggleArrows(show){
+  $$('.nav-arrow').forEach(b=> b.style.display = show ? '' : 'none');
+}
+function smoothScrollBy(px){
+  els.scroller?.scrollBy({ left: px, behavior: 'smooth' });
+}
+$('.nav-arrow.left') .addEventListener('click', ()=> smoothScrollBy(-Math.round(els.scroller.clientWidth*0.9)));
+$('.nav-arrow.right').addEventListener('click', ()=> smoothScrollBy(Math.round(els.scroller.clientWidth*0.9)));
+
+els.viewScroll.addEventListener('click', ()=>{
+  state.view = 'scroll';
+  els.viewScroll.classList.add('active');
+  els.viewGrid.classList.remove('active');
+  render();
+});
+els.viewGrid.addEventListener('click', ()=>{
+  state.view = 'grid';
+  els.viewGrid.classList.add('active');
+  els.viewScroll.classList.remove('active');
+  render();
+});
+
+els.search.addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toLowerCase();
+  state.filtered = state.all.filter(r=>{
+    const hay = `${r.title} ${r.artist} ${r.genre} ${r.notes}`.toLowerCase();
+    return hay.includes(q);
+  });
+  applySort(); render();
+});
+
+function setSortKey(key){
+  state.sortKey = key;
+  applySort(); render();
+}
+function applySort(){
+  const k = state.sortKey;
+  state.filtered.sort((a,b)=>{
+    const A = (a[k]||"").toLowerCase();
+    const B = (b[k]||"").toLowerCase();
+    return A.localeCompare(B);
+  });
+}
+els.sort.addEventListener('change', ()=> setSortKey(els.sort.value || 'title'));
+
+els.shuffle.addEventListener('click', ()=>{
+  for(let i=state.filtered.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
+  }
+  render();
+});
+
+// ---------- 8) Stats ----------
+function buildStats(recs){
+  const total = recs.length;
+  const artistMap = new Map();
+  const genreMap  = new Map();
+  for(const r of recs){
+    if(r.artist) artistMap.set(r.artist, (artistMap.get(r.artist)||0)+1);
+    if(r.genre){
+      for(const g of String(r.genre).split(/[\/,&]| and /i).map(s=>s.trim()).filter(Boolean)){
+        genreMap.set(g, (genreMap.get(g)||0)+1);
+      }
+    }
+  }
+  const topArtists = [...artistMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const topGenres  = [...genreMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,14);
+  return { total, uniqArtists: artistMap.size, topArtists, topGenres };
+}
+function renderStatsHTML(s){
+  const pill = (txt) => `<span class="chip">${txt}</span>`;
+  const artists = s.topArtists.map(([name,n]) => pill(`${name} • ${n}`)).join("");
+  const genres  = s.topGenres .map(([g,n])    => pill(`${g} • ${n}`)).join("");
+  return `
+    <div class="stat-grid">
+      <div class="stat-tile"><div>Total Albums</div><div class="stat-big">${s.total}</div></div>
+      <div class="stat-tile"><div>Unique Artists</div><div class="stat-big">${s.uniqArtists}</div></div>
+      <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${s.topGenres.length}</div></div>
+    </div>
+
+    <h3>Top Artists</h3>
+    <div class="chips">${artists || '<span class="chip">No data</span>'}</div>
+
+    <h3>Top Genres</h3>
+    <div class="chips">${genres  || '<span class="chip">No data</span>'}</div>
+  `;
+}
+function openStats(){
+  const s = buildStats(state.filtered);
+  els.statsBody.innerHTML = renderStatsHTML(s);
+  els.statsDlg.showModal();
+}
+$('#statsModal .dialog-close').addEventListener('click', ()=> els.statsDlg.close());
+els.statsBtn.addEventListener('click', openStats);
+
+// ---------- 9) Kickoff ----------
+loadFromSheet();
+applySort();
