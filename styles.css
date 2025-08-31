@@ -246,4 +246,21 @@ dialog#statsModal::backdrop{ backdrop-filter: blur(5px); background: rgba(8,10,1
     gap:16px;
     padding: 14px 52px 26px;
   }
+/* Hide any legacy close areas if they still exist */
+.dialog-actions { display: none !important; }
+
+/* If any extra buttons sneak in, hide them (only allow .dialog-close) */
+#statsModal .stats-card > .btn:not(.dialog-close) { display: none !important; }
+
+/* Our single Close button (top-right) */
+#statsModal .dialog-close{
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #1a1f29, #12171f);
+  color: var(--fg);
+  }  
 }
