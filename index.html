@@ -92,6 +92,43 @@
     </article>
   </template>
 
+<!-- Add Quagga2 BEFORE app.js -->
+<script src="https://unpkg.com/@ericblade/quagga2/dist/quagga.js"></script>
+
+<!-- In your header controls button row, add: -->
+<button id="scanBtn" class="btn">Scan UPC</button>
+
+<!-- Scanner Dialog (put near the bottom, before </body>) -->
+<dialog id="scanDialog" class="scan-dialog">
+  <form method="dialog" class="scan-card" id="scanForm">
+    <div class="scan-head">
+      <h3>Scan a UPC</h3>
+      <button type="button" class="btn ghost" id="scanClose">Close</button>
+    </div>
+
+    <div id="scannerViewport" class="scanner-box">
+      <div class="scan-reticle"></div>
+      <div class="scan-help">Point at the barcode. Hold steady.</div>
+    </div>
+
+    <div id="scanResult" class="scan-result" hidden>
+      <div class="scan-code">UPC: <span id="upcText"></span></div>
+      <div class="scan-form-grid">
+        <label>Artist <input id="scanArtist" required></label>
+        <label>Title  <input id="scanTitle" required></label>
+        <label>Notes  <input id="scanNotes" placeholder="Optional"></label>
+        <label>Cover URL <input id="scanCover" placeholder="https://... (optional)"></label>
+      </div>
+      <div class="scan-actions">
+        <button class="btn" id="scanSave" type="button">Save to Sheet</button>
+        <button class="btn ghost" id="scanAgain" type="button">Scan Again</button>
+      </div>
+      <input type="hidden" id="scanUPC">
+    </div>
+  </form>
+</dialog>
+
+  
   <script src="/app.js"></script>
 </body>
 </html>
