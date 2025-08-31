@@ -1,6 +1,6 @@
 /* -------------------------------------------------------
-   Vinyl Collection — progressive image hydration + wiki fix
-   CSV Source:
+   Vinyl Collection — fixed image proxy + wiki resolve + fallback
+   CSV:
    https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
 --------------------------------------------------------*/
 
@@ -17,17 +17,14 @@ const HEADER_ALIASES = {
   altCover: ["alt artwork","alt cover","alternate artwork","alternate cover"]
 };
 
-// Neutral vinyl placeholder (SVG data URL)
+// Neutral placeholder (SVG data URL)
 const PLACEHOLDER =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-    <defs>
-      <radialGradient id="g" cx="50%" cy="50%" r="60%">
-        <stop offset="0%" stop-color="#2a3140"/>
-        <stop offset="100%" stop-color="#121722"/>
-      </radialGradient>
-    </defs>
+    <defs><radialGradient id="g" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#2a3140"/><stop offset="100%" stop-color="#121722"/>
+    </radialGradient></defs>
     <circle cx="50" cy="50" r="48" fill="url(#g)"/>
     <circle cx="50" cy="50" r="8" fill="#0a0f17" stroke="#444e60" stroke-width="2"/>
     <circle cx="50" cy="50" r="2.5" fill="#ddd"/>
@@ -52,9 +49,9 @@ const els = {
   tpl:        $('#cardTpl')
 };
 
-// Make body account for fixed header height
+// keep layout correct with fixed header
 function applyHeaderOffset(){
-  const h = els.header.offsetHeight || 120;
+  const h = els.header?.offsetHeight || 120;
   document.body.style.setProperty('--header-h', `${h}px`);
   document.body.classList.add('has-fixed-header');
 }
@@ -108,10 +105,11 @@ const IMG_EXT_RE = /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i;
 function isImageUrl(u){ return IMG_EXT_RE.test(u||""); }
 function isWikipediaPage(u){ return /^https?:\/\/[^/]*wikipedia\.org\/wiki\/[^]+/i.test(u||""); }
 
-function prox(url){
+// Correct weserv proxy format: images.weserv.nl + ssl: + no protocol
+function weserv(url){
   if(!url) return "";
-  // wsrv.nl proxies actual image files
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
+  const stripped = url.replace(/^https?:\/\//,'');
+  return `https://images.weserv.nl/?url=ssl:${stripped}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
 
 async function wikipediaLeadImage(pageUrl){
@@ -122,23 +120,20 @@ async function wikipediaLeadImage(pageUrl){
     const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
     if(!r.ok) return "";
     const j = await r.json();
-    const src = j?.originalimage?.source || j?.thumbnail?.source || "";
-    return src || "";
-  }catch{
-    return "";
-  }
+    return j?.originalimage?.source || j?.thumbnail?.source || "";
+  }catch{ return ""; }
 }
 
-async function resolveCoverUrl(raw){
+// Return BOTH proxy and direct; we'll try proxy, then fall back to direct on error
+async function resolveCover(raw){
   const url = (raw||"").trim();
-  if(!url) return "";
-  if(isImageUrl(url)) return prox(url);
+  if(!url) return { prox:"", direct:"" };
+  if(isImageUrl(url)) return { prox: weserv(url), direct: url };
   if(isWikipediaPage(url)){
     const lead = await wikipediaLeadImage(url);
-    return lead ? prox(lead) : "";
+    return lead ? { prox: weserv(lead), direct: lead } : { prox:"", direct:"" };
   }
-  // Other non-image pages (Apple Music, store pages) → no scrape, use placeholder.
-  return "";
+  return { prox:"", direct:"" }; // non-image pages like Apple Music → no scrape
 }
 
 // ---------- 5) Loader ----------
@@ -164,23 +159,23 @@ async function loadFromSheet(){
 
     const { data } = parseCSV(text);
     const normalized = data.map(r => {
-      const title   = pick(r, HEADER_ALIASES.title);
-      const artist  = pick(r, HEADER_ALIASES.artist);
-      const genre   = pick(r, HEADER_ALIASES.genre);
-      const notes   = pick(r, HEADER_ALIASES.notes);
-      const coverRaw= pick(r, HEADER_ALIASES.cover);
-      const altRaw  = pick(r, HEADER_ALIASES.altCover);
-      const cover   = coverRaw || altRaw || "";
-      return { title, artist, genre, notes, cover, coverResolved: "" };
+      const title    = pick(r, HEADER_ALIASES.title);
+      const artist   = pick(r, HEADER_ALIASES.artist);
+      const genre    = pick(r, HEADER_ALIASES.genre);
+      const notes    = pick(r, HEADER_ALIASES.notes);
+      const coverRaw = pick(r, HEADER_ALIASES.cover);
+      const altRaw   = pick(r, HEADER_ALIASES.altCover);
+      const cover    = coverRaw || altRaw || "";
+      return { title, artist, genre, notes, cover, prox:"", direct:"" };
     }).filter(x => x.title || x.artist);
 
     state.all = normalized;
     state.filtered = [...normalized];
     applySort();
-    render();                // render immediately with skeletons
+    render();                // render immediately with placeholders
     $('#status')?.remove();
 
-    // progressively hydrate covers (fast UX) with small concurrency
+    // progressively hydrate covers (limit concurrency)
     hydrateCovers(state.all, 8);
   }catch(e){
     console.error(e);
@@ -194,27 +189,36 @@ async function hydrateCovers(recs, limit=8){
   async function worker(){
     while(idx < recs.length){
       const i = idx++;
-      const url = await resolveCoverUrl(recs[i].cover);
-      recs[i].coverResolved = url;
-      updateCardImage(i, url);
+      const { prox, direct } = await resolveCover(recs[i].cover);
+      recs[i].prox = prox;
+      recs[i].direct = direct;
+      updateCardImage(i, prox, direct);
     }
   }
   await Promise.all(Array.from({length:Math.max(1,Math.min(limit,recs.length))}, worker));
 }
 
-// Update a single card in DOM when its image resolves
-function updateCardImage(i, url){
-  // Check both views (whichever is visible now)
+// Update image for a specific card index
+function updateCardImage(i, proxUrl, directUrl){
   const roots = [els.scroller, els.grid];
   for(const root of roots){
     if(!root) continue;
     const card = root.querySelector(`.card[data-idx="${i}"]`);
     if(!card) continue;
     const img = card.querySelector('.cover');
-    img.src = url || PLACEHOLDER;
-    // in case it was already loaded: ensure visible
+    // try proxy first; if it errors, try direct; else placeholder
+    let triedDirect = false;
+    img.onerror = ()=>{
+      if(!triedDirect && directUrl){
+        triedDirect = true;
+        img.src = directUrl; // fallback to direct
+      }else{
+        img.src = PLACEHOLDER;
+      }
+      card.classList.add('loaded');
+    };
     img.onload = ()=> card.classList.add('loaded');
-    img.onerror = ()=> { img.src = PLACEHOLDER; card.classList.add('loaded'); };
+    img.src = proxUrl || directUrl || PLACEHOLDER;
     break;
   }
 }
@@ -241,22 +245,20 @@ function createCard(rec, idx){
   titleE.textContent  = safeTitle;
   artistE.textContent = safeArtist;
   genreE.innerHTML    = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
-  notesE.textContent  = rec.notes || "";
+  if (notesE) notesE.textContent = rec.notes || "";
 
-  // Initial src = resolved (if we already have it) or placeholder.
-  const src = rec.coverResolved || "";
+  // immediate placeholder; real img comes via hydrate or if already resolved
+  const initial = rec.prox || rec.direct || PLACEHOLDER;
   img.alt = `${safeTitle} — ${safeArtist}`;
-  img.src = src || PLACEHOLDER;
+  img.src = initial;
 
-  if(src){
+  if(initial !== PLACEHOLDER){
     img.addEventListener('load', ()=> card.classList.add('loaded'), { once:true });
     img.addEventListener('error', ()=> { img.src = PLACEHOLDER; card.classList.add('loaded'); }, { once:true });
   }else{
-    // placeholder visible immediately
     requestAnimationFrame(()=> card.classList.add('loaded'));
   }
 
-  // flip on click
   card.addEventListener('click', (e)=>{
     const isArrow = e.target.closest('.nav-arrow');
     if(isArrow) return;
@@ -267,30 +269,27 @@ function createCard(rec, idx){
 }
 
 function renderScroll(){
-  const root = els.scroller;
-  root.innerHTML = "";
-  state.filtered.forEach((rec,i) => root.appendChild(createCard(rec,i)));
-  root.scrollLeft = 0; // always start at the first card
+  els.scroller.innerHTML = "";
+  state.filtered.forEach((rec,i) => els.scroller.appendChild(createCard(rec,i)));
+  els.scroller.scrollLeft = 0;
 }
 function renderGrid(){
-  const root = els.grid;
-  root.innerHTML = "";
-  state.filtered.forEach((rec,i) => root.appendChild(createCard(rec,i)));
+  els.grid.innerHTML = "";
+  state.filtered.forEach((rec,i) => els.grid.appendChild(createCard(rec,i)));
 }
-
 function render(){
   const isScroll = state.view === 'scroll';
   $('.scroller-wrap').classList.toggle('active', isScroll);
   $('.grid-wrap').classList.toggle('active', !isScroll);
-  if(isScroll) { renderScroll(); toggleArrows(true); }
-  else         { renderGrid();   toggleArrows(false); }
+  if(isScroll){ renderScroll(); toggleArrows(true); }
+  else        { renderGrid();   toggleArrows(false); }
 }
 
 // ---------- 7) Behaviors ----------
 function toggleArrows(show){ $$('.nav-arrow').forEach(b=> b.style.display = show ? '' : 'none'); }
 function smoothScrollBy(px){ els.scroller?.scrollBy({ left: px, behavior: 'smooth' }); }
 $('.nav-arrow.left') .addEventListener('click', ()=> smoothScrollBy(-Math.round(els.scroller.clientWidth*0.9)));
-$('.nav-arrow.right').addEventListener('click', ()=> smoothScrollBy(Math.round(els.scroller.clientWidth*0.9)));
+$('.nav-arrow.right').addEventListener('click',()=> smoothScrollBy(Math.round(els.scroller.clientWidth*0.9)));
 
 $('#viewScroll').addEventListener('click', ()=>{
   state.view = 'scroll';
