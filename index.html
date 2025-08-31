@@ -79,14 +79,15 @@
   </main>
 
   <!-- Stats -->
-  <dialog id="statsModal">
-    <div class="stats-card">
-      <!-- Top-right button only -->
-      <button type="button" class="stats-close btn ghost small" aria-label="Close">Close</button>
-      <h2>Collection Stats</h2>
-      <div id="statsBody" class="stats-body"></div>
-    </div>
-  </dialog>
+<dialog id="statsModal">
+  <form method="dialog" class="stats-card">
+    <h2>Collection Stats</h2>
+    <div id="statsBody" class="stats-body"></div>
+
+    <!-- Single Close (top-right) -->
+    <button class="btn dialog-close" value="close" aria-label="Close">Close</button>
+  </form>
+</dialog>
 
   <!-- App -->
   <script defer src="/app.js"></script>
