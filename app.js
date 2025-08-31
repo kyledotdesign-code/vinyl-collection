@@ -1,10 +1,10 @@
 /* -------------------------------------------------------
-   Vinyl Collection — fixed image proxy + wiki resolve + fallback
-   CSV:
+   Vinyl Collection — artwork fixed (weserv + wiki resolve + fallbacks)
+   Sheet CSV:
    https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv
---------------------------------------------------------*/
+-------------------------------------------------------- */
 
-// ---------- 0) Config ----------
+// 0) CONFIG
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
 
@@ -17,11 +17,10 @@ const HEADER_ALIASES = {
   altCover: ["alt artwork","alt cover","alternate artwork","alternate cover"]
 };
 
-// Neutral placeholder (SVG data URL)
+// simple neutral placeholder (SVG)
 const PLACEHOLDER =
   'data:image/svg+xml;utf8,' +
-  encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <defs><radialGradient id="g" cx="50%" cy="50%" r="60%">
       <stop offset="0%" stop-color="#2a3140"/><stop offset="100%" stop-color="#121722"/>
     </radialGradient></defs>
@@ -30,7 +29,7 @@ const PLACEHOLDER =
     <circle cx="50" cy="50" r="2.5" fill="#ddd"/>
   </svg>`);
 
-// ---------- 1) Elements ----------
+// 1) ELEMENTS
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 
@@ -49,7 +48,7 @@ const els = {
   tpl:        $('#cardTpl')
 };
 
-// keep layout correct with fixed header
+// keep layout offset for fixed header
 function applyHeaderOffset(){
   const h = els.header?.offsetHeight || 120;
   document.body.style.setProperty('--header-h', `${h}px`);
@@ -58,10 +57,10 @@ function applyHeaderOffset(){
 window.addEventListener('load', applyHeaderOffset);
 window.addEventListener('resize', applyHeaderOffset);
 
-// ---------- 2) State ----------
+// 2) STATE
 const state = { all: [], filtered: [], view: 'scroll', sortKey: 'title' };
 
-// ---------- 3) CSV parsing ----------
+// 3) CSV helpers
 function pick(obj, synonyms){
   const keys = Object.keys(obj);
   for (const key of synonyms){
@@ -100,19 +99,19 @@ function parseCSV(text){
   return { header, data };
 }
 
-// ---------- 4) Image helpers ----------
+// 4) IMAGE RESOLUTION
 const IMG_EXT_RE = /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i;
-function isImageUrl(u){ return IMG_EXT_RE.test(u||""); }
-function isWikipediaPage(u){ return /^https?:\/\/[^/]*wikipedia\.org\/wiki\/[^]+/i.test(u||""); }
+const isImageUrl = (u) => IMG_EXT_RE.test(u||"");
+const isWikiPage = (u) => /^https?:\/\/[^/]*wikipedia\.org\/wiki\/[^]+/i.test(u||"");
 
-// Correct weserv proxy format: images.weserv.nl + ssl: + no protocol
-function weserv(url){
+// Correct weserv proxy: encode entire "ssl:host/path"
+function weservProxy(url){
   if(!url) return "";
   const stripped = url.replace(/^https?:\/\//,'');
-  return `https://images.weserv.nl/?url=ssl:${stripped}&w=1000&h=1000&fit=cover&output=webp&q=85`;
+  return `https://images.weserv.nl/?url=${encodeURIComponent('ssl:' + stripped)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
 
-async function wikipediaLeadImage(pageUrl){
+async function wikiLeadImage(pageUrl){
   try{
     const m = pageUrl.match(/\/wiki\/([^?#]+)/i);
     if(!m) return "";
@@ -124,19 +123,20 @@ async function wikipediaLeadImage(pageUrl){
   }catch{ return ""; }
 }
 
-// Return BOTH proxy and direct; we'll try proxy, then fall back to direct on error
-async function resolveCover(raw){
-  const url = (raw||"").trim();
-  if(!url) return { prox:"", direct:"" };
-  if(isImageUrl(url)) return { prox: weserv(url), direct: url };
-  if(isWikipediaPage(url)){
-    const lead = await wikipediaLeadImage(url);
-    return lead ? { prox: weserv(lead), direct: lead } : { prox:"", direct:"" };
+// Decide best image candidate for a single cell (Album Artwork or Alt Artwork)
+async function pickBestImage(raw){
+  const u = (raw||"").trim();
+  if(!u) return { prox:"", direct:"" };
+  if(isImageUrl(u))    return { prox: weservProxy(u), direct: u };
+  if(isWikiPage(u)){
+    const lead = await wikiLeadImage(u);
+    if(lead) return { prox: weservProxy(lead), direct: lead };
   }
-  return { prox:"", direct:"" }; // non-image pages like Apple Music → no scrape
+  // Non-image / non-wiki page (Apple Music, etc.) → no scrape
+  return { prox:"", direct:"" };
 }
 
-// ---------- 5) Loader ----------
+// 5) LOADING
 function showStatus(msg){
   let el = $('#status');
   if(!el){
@@ -153,77 +153,81 @@ async function loadFromSheet(){
     const res  = await fetch(SHEET_CSV, { cache: "no-store" });
     const text = await res.text();
     if(text.trim().startsWith("<")){
-      showStatus("Your Google Sheet link is not CSV. Use File → Publish to web → CSV (ends with output=csv).");
+      showStatus("Your Google Sheet link is not CSV. Publish to web → CSV (URL ends with output=csv).");
       return;
     }
 
     const { data } = parseCSV(text);
     const normalized = data.map(r => {
-      const title    = pick(r, HEADER_ALIASES.title);
-      const artist   = pick(r, HEADER_ALIASES.artist);
-      const genre    = pick(r, HEADER_ALIASES.genre);
-      const notes    = pick(r, HEADER_ALIASES.notes);
-      const coverRaw = pick(r, HEADER_ALIASES.cover);
-      const altRaw   = pick(r, HEADER_ALIASES.altCover);
-      const cover    = coverRaw || altRaw || "";
-      return { title, artist, genre, notes, cover, prox:"", direct:"" };
+      const title     = pick(r, HEADER_ALIASES.title);
+      const artist    = pick(r, HEADER_ALIASES.artist);
+      const genre     = pick(r, HEADER_ALIASES.genre);
+      const notes     = pick(r, HEADER_ALIASES.notes);
+      const coverRaw  = pick(r, HEADER_ALIASES.cover);
+      const altRaw    = pick(r, HEADER_ALIASES.altCover);
+      // pick primary string now; actual resolution runs async
+      const input     = coverRaw || altRaw || "";
+      return { title, artist, genre, notes, input, prox:"", direct:"" };
     }).filter(x => x.title || x.artist);
 
     state.all = normalized;
     state.filtered = [...normalized];
     applySort();
-    render();                // render immediately with placeholders
+    render(); // placeholders immediately
     $('#status')?.remove();
 
-    // progressively hydrate covers (limit concurrency)
-    hydrateCovers(state.all, 8);
+    // hydrate images with limited concurrency
+    await hydrateImages(state.all, 8);
   }catch(e){
     console.error(e);
     showStatus("Couldn’t load your Google Sheet. Check the URL or try again.");
   }
 }
 
-// Progressive hydration with a concurrency cap
-async function hydrateCovers(recs, limit=8){
+// progressively resolve and paint covers
+async function hydrateImages(recs, limit=8){
   let idx = 0;
   async function worker(){
     while(idx < recs.length){
       const i = idx++;
-      const { prox, direct } = await resolveCover(recs[i].cover);
-      recs[i].prox = prox;
-      recs[i].direct = direct;
-      updateCardImage(i, prox, direct);
+      const rec = recs[i];
+
+      // try Album Artwork / Alt Artwork string
+      let { prox, direct } = await pickBestImage(rec.input);
+
+      // if still nothing, leave placeholder (we are no longer scraping Apple/Spotify)
+      rec.prox = prox; rec.direct = direct;
+
+      paintCover(i, prox, direct);
     }
   }
   await Promise.all(Array.from({length:Math.max(1,Math.min(limit,recs.length))}, worker));
 }
 
-// Update image for a specific card index
-function updateCardImage(i, proxUrl, directUrl){
+// actually set <img> src, with proxy→direct→placeholder fallback
+function paintCover(i, proxUrl, directUrl){
   const roots = [els.scroller, els.grid];
   for(const root of roots){
     if(!root) continue;
     const card = root.querySelector(`.card[data-idx="${i}"]`);
     if(!card) continue;
     const img = card.querySelector('.cover');
-    // try proxy first; if it errors, try direct; else placeholder
     let triedDirect = false;
     img.onerror = ()=>{
       if(!triedDirect && directUrl){
         triedDirect = true;
-        img.src = directUrl; // fallback to direct
+        img.src = directUrl;
       }else{
         img.src = PLACEHOLDER;
       }
       card.classList.add('loaded');
     };
-    img.onload = ()=> card.classList.add('loaded');
+    img.onload  = ()=> card.classList.add('loaded');
     img.src = proxUrl || directUrl || PLACEHOLDER;
-    break;
   }
 }
 
-// ---------- 6) Rendering ----------
+// 6) RENDERING
 function createCard(rec, idx){
   const tpl = els.tpl.content.cloneNode(true);
   const card   = tpl.querySelector('.card');
@@ -240,28 +244,19 @@ function createCard(rec, idx){
   const safeTitle  = rec.title  || "Untitled";
   const safeArtist = rec.artist || "Unknown Artist";
 
-  capT.textContent = safeTitle;
-  capA.textContent = safeArtist;
+  capT.textContent    = safeTitle;
+  capA.textContent    = safeArtist;
   titleE.textContent  = safeTitle;
   artistE.textContent = safeArtist;
   genreE.innerHTML    = rec.genre ? `<span class="chip">${rec.genre}</span>` : "";
   if (notesE) notesE.textContent = rec.notes || "";
 
-  // immediate placeholder; real img comes via hydrate or if already resolved
-  const initial = rec.prox || rec.direct || PLACEHOLDER;
   img.alt = `${safeTitle} — ${safeArtist}`;
-  img.src = initial;
-
-  if(initial !== PLACEHOLDER){
-    img.addEventListener('load', ()=> card.classList.add('loaded'), { once:true });
-    img.addEventListener('error', ()=> { img.src = PLACEHOLDER; card.classList.add('loaded'); }, { once:true });
-  }else{
-    requestAnimationFrame(()=> card.classList.add('loaded'));
-  }
+  img.src = PLACEHOLDER;                   // paint real image later
+  card.classList.add('loaded');            // keep UI snappy (already showing placeholder)
 
   card.addEventListener('click', (e)=>{
-    const isArrow = e.target.closest('.nav-arrow');
-    if(isArrow) return;
+    if(e.target.closest('.nav-arrow')) return;
     card.classList.toggle('flipped');
   });
 
@@ -285,7 +280,7 @@ function render(){
   else        { renderGrid();   toggleArrows(false); }
 }
 
-// ---------- 7) Behaviors ----------
+// 7) UI
 function toggleArrows(show){ $$('.nav-arrow').forEach(b=> b.style.display = show ? '' : 'none'); }
 function smoothScrollBy(px){ els.scroller?.scrollBy({ left: px, behavior: 'smooth' }); }
 $('.nav-arrow.left') .addEventListener('click', ()=> smoothScrollBy(-Math.round(els.scroller.clientWidth*0.9)));
@@ -332,7 +327,7 @@ els.shuffle.addEventListener('click', ()=>{
   render();
 });
 
-// ---------- 8) Stats ----------
+// 8) STATS
 function buildStats(recs){
   const total = recs.length;
   const artistMap = new Map();
@@ -349,32 +344,23 @@ function buildStats(recs){
   const topGenres  = [...genreMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,14);
   return { total, uniqArtists: artistMap.size, topArtists, topGenres };
 }
-function renderStatsHTML(s){
-  const pill = (txt) => `<span class="chip">${txt}</span>`;
-  const artists = s.topArtists.map(([name,n]) => pill(`${name} • ${n}`)).join("");
-  const genres  = s.topGenres .map(([g,n])    => pill(`${g} • ${n}`)).join("");
-  return `
+function pills(list){ return list.map(([t,n])=>`<span class="chip">${t} • ${n}</span>`).join(""); }
+function openStats(){
+  const s = buildStats(state.filtered);
+  els.statsBody.innerHTML = `
     <div class="stat-grid">
       <div class="stat-tile"><div>Total Albums</div><div class="stat-big">${s.total}</div></div>
       <div class="stat-tile"><div>Unique Artists</div><div class="stat-big">${s.uniqArtists}</div></div>
       <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${s.topGenres.length}</div></div>
     </div>
-
-    <h3>Top Artists</h3>
-    <div class="chips">${artists || '<span class="chip">No data</span>'}</div>
-
-    <h3>Top Genres</h3>
-    <div class="chips">${genres  || '<span class="chip">No data</span>'}</div>
+    <h3>Top Artists</h3><div class="chips">${pills(s.topArtists) || '<span class="chip">No data</span>'}</div>
+    <h3>Top Genres</h3><div class="chips">${pills(s.topGenres)  || '<span class="chip">No data</span>'}</div>
   `;
-}
-function openStats(){
-  const s = buildStats(state.filtered);
-  els.statsBody.innerHTML = renderStatsHTML(s);
   els.statsDlg.showModal();
 }
 $('#statsModal .dialog-close').addEventListener('click', ()=> els.statsDlg.close());
 els.statsBtn.addEventListener('click', openStats);
 
-// ---------- 9) Kickoff ----------
+// 9) GO
 loadFromSheet();
 applySort();
