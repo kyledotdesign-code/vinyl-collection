@@ -249,6 +249,22 @@ function openStats(){
   els.statsModal.showModal();
 }
 
+function openStats() {
+  const s = buildStats(state.filtered);
+  const body = document.getElementById('statsBody');
+  body.innerHTML = renderStatsHTML(s);
+
+  const statsModal = document.getElementById('statsModal');
+  statsModal.showModal();
+
+  // Safety: remove any extra close buttons that might exist
+  [...statsModal.querySelectorAll('.stats-card > .btn')].forEach(btn => {
+    if (!btn.classList.contains('dialog-close')) btn.remove();
+  });
+
+  statsModal.querySelector('.dialog-close')?.addEventListener('click', () => statsModal.close());
+}
+
 // --- data load (Alt Artwork fallback)
 async function loadFromSheet(){
   const text = await fetch(SHEET_CSV, { cache:"no-store" }).then(r => r.text());
