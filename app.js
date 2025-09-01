@@ -1,7 +1,7 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   - Fix: arrow buttons now move exactly one card (centered)
-   - Mobile scan modal stays clear of edges (CSS)
+   - Card-by-card arrow nav (no drift)
+   - FAB with action sheet + manual UPC modal
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -30,15 +30,13 @@ const els = {
   cardTpl: $('#cardTpl'),
   scrollView: $('#scrollView'),
   gridView: $('#gridView'),
-  // Scan
-  scanBtn: $('#scanBtn'),
+  // Scan modal + form
   scanModal: $('#scanModal'),
   scanVideo: $('#scanVideo'),
   scanHint: $('#scanHint'),
   manualUPC: $('#manualUPC'),
   closeScan: $('#closeScan'),
   scanStatus: $('#scanStatus'),
-  // Form
   scanForm: $('#scanForm'),
   formUPC: $('#formUPC'),
   formArtist: $('#formArtist'),
@@ -46,45 +44,39 @@ const els = {
   formGenre: $('#formGenre'),
   formNotes: $('#formNotes'),
   saveRecord: $('#saveRecord'),
+  // FAB + menus
+  fab: $('#fab'),
+  fabMenu: $('#fabMenu'),
+  fabScan: $('#fabScan'),
+  fabEnter: $('#fabEnter'),
+  // Enter UPC modal
+  enterUPCModal: $('#enterUPCModal'),
+  enterUPCForm: $('#enterUPCForm'),
+  enterUPCInput: $('#enterUPCInput'),
 };
 
 // 1a) Fixed header offset
 (function setHeaderOffset(){
   const header = document.querySelector('.site-header');
-  const apply = () => {
-    if (!header) return;
-    document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px');
-  };
+  const apply = () => { if (header) document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px'); };
   window.addEventListener('load', apply, { once:true });
   window.addEventListener('resize', apply);
-  if ('ResizeObserver' in window && header){
-    new ResizeObserver(apply).observe(header);
-  } else {
-    setTimeout(apply, 300);
-  }
+  if ('ResizeObserver' in window && header){ new ResizeObserver(apply).observe(header); } else { setTimeout(apply, 300); }
 })();
 
 // 2) STATE
 const state = {
-  all: [],
-  filtered: [],
-  sortKey: 'title',
-  view: 'scroll',
-  mediaStream: null,
-  scanning: false,
-  rafId: null,
-  detectorSupported: 'BarcodeDetector' in window,
-  detector: null,
-  usingZXing: false,
-  zxingReader: null,
-  zxingControls: null,
-  handlingUPC: false,
-  pending: null,
+  all: [], filtered: [],
+  sortKey: 'title', view: 'scroll',
+  mediaStream: null, scanning:false, rafId:null,
+  detectorSupported: 'BarcodeDetector' in window, detector:null,
+  usingZXing:false, zxingReader:null, zxingControls:null,
+  handlingUPC:false, pending:null,
 };
 
 const withBust = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
 
-// 3) CSV PARSER
+// 3) CSV PARSER + helpers (unchanged)
 function parseCSV(text){
   const rows=[]; let cur=['']; let i=0,inQ=false;
   for(; i<text.length; i++){
@@ -100,8 +92,6 @@ function parseCSV(text){
   const data=rows.slice(1).map(r=>{const o={}; header.forEach((h,idx)=>o[h]=(r[idx]??'').trim()); return o;});
   return {header,data};
 }
-
-// 4) HEADER PICKING
 const HEADER_ALIASES = {
   title:["title","album","record","release"],
   artist:["artist","artists","band"],
@@ -116,8 +106,6 @@ function pickField(row, keys){
   for(const key of keys){ if(map[key]){ const v=row[map[key]]; if(v && String(v).trim()) return String(v).trim(); } }
   return "";
 }
-
-// 5) ARTWORK
 function wsrv(url){ return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`; }
 async function fromWikipediaPage(u){
   const m=u.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i); if(!m) return "";
@@ -141,7 +129,7 @@ function placeholderFor(a,b){
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-// 6) LOAD & NORMALIZE
+// 4) LOAD & NORMALIZE
 async function loadFromSheet(forceFresh=false){
   const url = forceFresh ? withBust(SHEET_CSV) : SHEET_CSV;
   const res = await fetch(url, { cache:"no-store" });
@@ -177,7 +165,7 @@ async function resolveCovers(records,concurrency=6){
   }); await Promise.all(workers);
 }
 
-// 7) RENDER
+// 5) RENDER
 function createCard(rec){
   const tpl=els.cardTpl?.content?.firstElementChild;
   const node=tpl?tpl.cloneNode(true):document.createElement('article');
@@ -225,7 +213,7 @@ function centerFirstCardIfMobile(){
   });
 }
 
-/* --- New: index-based arrow navigation (no drift) --- */
+/* Arrow nav: index-based (no drift) */
 const cardsList = () => Array.from(els.scroller.querySelectorAll('.card'));
 function currentCenteredIndex(){
   const cards = cardsList();
@@ -249,7 +237,6 @@ function scrollToIndex(idx){
   const left = card.offsetLeft + card.offsetWidth/2 - els.scroller.clientWidth/2;
   els.scroller.scrollTo({ left: Math.max(0, Math.round(left)), behavior: 'smooth' });
 }
-/* ---------------------------------------------------- */
 
 function renderScroll(){
   els.scroller.innerHTML = '';
@@ -272,7 +259,7 @@ function render(){
 window.addEventListener('resize', centerFirstCardIfMobile);
 window.addEventListener('orientationchange', centerFirstCardIfMobile);
 
-// 8) SEARCH / SORT / SHUFFLE
+// 6) SEARCH / SORT / SHUFFLE
 function applySort(){
   const k=state.sortKey;
   state.filtered.sort((a,b)=> (a[k]||"").toLowerCase().localeCompare((b[k]||"").toLowerCase()));
@@ -291,22 +278,16 @@ els.shuffle.addEventListener('click',()=>{
   render();
 });
 
-// 9) VIEW TOGGLES
+// 7) VIEW TOGGLES
 els.viewScrollBtn.addEventListener('click',()=>{ state.view='scroll'; render(); });
 els.viewGridBtn.addEventListener('click',()=>{ state.view='grid'; render(); });
 
-// 10) ARROWS (now card-index based)
+// 8) ARROWS
 function toggleArrows(show){ els.prev.style.display=show?'':'none'; els.next.style.display=show?'':'none'; }
-els.prev.addEventListener('click',()=>{
-  const i = currentCenteredIndex();
-  scrollToIndex(i - 1);
-});
-els.next.addEventListener('click',()=>{
-  const i = currentCenteredIndex();
-  scrollToIndex(i + 1);
-});
+els.prev.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() - 1); });
+els.next.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() + 1); });
 
-// 11) STATS
+// 9) STATS
 function buildStats(recs){
   const total=recs.length, artistMap=new Map(), genreMap=new Map();
   for(const r of recs){
@@ -342,7 +323,7 @@ function openStats(){
 }
 els.statsBtn.addEventListener('click',openStats);
 
-// 12) UPC LOOKUP
+// 10) UPC LOOKUP + Save
 async function lookupByUPC(upc){
   const url=`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r=await fetch(url,{ headers:{ 'Accept':'application/json' }});
@@ -371,21 +352,13 @@ async function lookupByUPC(upc){
 
   return { title, artist, upc, coverRaw: coverUrl || "", altRaw:"", notes:"", genre:"" };
 }
-
-// 13) Add to Google Sheet
 async function addRecordToSheet(rec){
   const form=new URLSearchParams({
     title:rec.title||"", artist:rec.artist||"", upc:rec.upc||"",
     genre:rec.genre||"", notes:rec.notes||"",
     cover:rec.coverRaw||"", alt:rec.altRaw||""
   });
-
-  const resp = await fetch(APPS_SCRIPT_URL,{
-    method:'POST',
-    headers:{ 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' },
-    body: form.toString()
-  });
-
+  const resp = await fetch(APPS_SCRIPT_URL,{ method:'POST', headers:{ 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' }, body: form.toString() });
   let json=null, text="";
   try { json = await resp.clone().json(); } catch { text = await resp.text().catch(()=>"(no body)"); }
   if(!json || !json.ok){
@@ -394,15 +367,13 @@ async function addRecordToSheet(rec){
   }
   return json;
 }
-
-// 14) Optimistic add
 async function addToCollection(rec){
   rec.cover = await chooseCover(rec.coverRaw, rec.altRaw);
   state.all.unshift(rec); state.filtered=[...state.all]; applySort(); render();
   await addRecordToSheet(rec);
 }
 
-// 15) Scan engines (unchanged)
+// 11) Scan engines (same behavior as before)
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
@@ -485,8 +456,7 @@ async function startScanEngine(){
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   try{
     if (isMobile || !state.detectorSupported) {
-      els.scanHint.textContent = 'Scanning (ZXing)…';
-      await startZXing();
+      els.scanHint.textContent = 'Scanning (ZXing)…'; await startZXing();
     } else {
       await startBDCamera();
       setTimeout(async ()=>{
@@ -512,25 +482,19 @@ async function stopScanEngines(){
   if(state.rafId) cancelAnimationFrame(state.rafId);
   if(state.mediaStream){ for(const t of state.mediaStream.getTracks()){ t.stop(); } state.mediaStream=null; }
   els.scanVideo.pause(); els.scanVideo.srcObject=null;
-
   if (state.zxingControls) { try { state.zxingControls.stop(); } catch{} state.zxingControls = null; }
   if (state.zxingReader) { try { state.zxingReader.reset(); } catch{} state.zxingReader = null; }
   state.usingZXing = false;
 }
 
-// 16) Modal open/close
+// 12) Modal open/close
 async function openScanModal(){
   els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
-  els.scanModal.showModal();
-  document.body.classList.add('modal-open');
+  els.scanModal.showModal(); document.body.classList.add('modal-open');
   try{ els.scanHint.textContent='Starting camera…'; await startScanEngine(); }
   catch{ els.scanStatus.textContent='Camera unavailable. Use “Enter UPC manually.”'; }
 }
-function closeScanModal(){
-  stopScanEngines(); els.scanModal.close();
-  document.body.classList.remove('modal-open');
-}
-els.scanBtn.addEventListener('click',openScanModal);
+function closeScanModal(){ stopScanEngines(); els.scanModal.close(); document.body.classList.remove('modal-open'); }
 els.closeScan?.addEventListener('click',closeScanModal);
 els.manualUPC.addEventListener('click',async ()=>{
   const upc=prompt("Enter UPC (numbers only):")||""; const trimmed=upc.replace(/\D+/g,'').trim();
@@ -538,8 +502,9 @@ els.manualUPC.addEventListener('click',async ()=>{
   await stopScanEngines(); await handleUPC(trimmed);
 });
 
-// 17) After-detect flow
+// 13) After-detect flow
 async function handleUPC(upc){
+  if (!els.scanModal.open) { await openScanModal(); } // ensure modal visible for status/form
   await stopScanEngines();
   els.scanStatus.textContent=`UPC: ${upc} — looking up…`;
   try{
@@ -552,12 +517,10 @@ async function handleUPC(upc){
     state.pending={ upc, title:"", artist:"", genre:"", notes:"", coverRaw:"", altRaw:"" };
     els.formUPC.value=upc; els.formArtist.value=""; els.formTitle.value=""; els.formGenre.value=""; els.formNotes.value="";
     els.saveRecord.disabled=false; els.scanStatus.textContent=`No match found. Enter details and Save`; els.formArtist.focus();
-  } finally {
-    state.handlingUPC = false;
-  }
+  } finally { state.handlingUPC = false; }
 }
 
-// 18) Submit form → save
+// 14) Submit form → save
 els.scanForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const upc=(els.formUPC.value||"").trim();
@@ -590,29 +553,41 @@ els.scanForm.addEventListener('submit', async (e)=>{
   }
 });
 
-// 19) Update Collection (hard resync)
+// 15) Update Collection (hard resync)
 els.refresh?.addEventListener('click', async ()=>{
   if (els.scanModal?.open) closeScanModal();
-  els.search.value = '';
-  state.pending = null;
-  els.scanForm?.reset?.();
-  if (els.formUPC) els.formUPC.value = '';
+  els.search.value = ''; state.pending = null;
+  els.scanForm?.reset?.(); if (els.formUPC) els.formUPC.value = '';
   if (els.saveRecord) els.saveRecord.disabled = true;
   els.scanStatus.textContent = '';
 
   const originalText = els.refresh.textContent;
   els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
-  try {
-    state.all = []; state.filtered = []; render();
-    await loadFromSheet(true);
-  } catch {
-    alert('Update failed. Check your published CSV link.');
-  } finally {
-    els.refresh.disabled = false; els.refresh.textContent = originalText;
-  }
+  try { state.all = []; state.filtered = []; render(); await loadFromSheet(true); }
+  catch { alert('Update failed. Check your published CSV link.'); }
+  finally { els.refresh.disabled = false; els.refresh.textContent = originalText; }
 });
 
-// 20) Kickoff
+/* ===== FAB behavior ===== */
+els.fab.addEventListener('click', ()=> { els.fabMenu.showModal(); });
+els.fabScan.addEventListener('click', async ()=>{
+  els.fabMenu.close();
+  await openScanModal();
+});
+els.fabEnter.addEventListener('click', ()=>{
+  els.fabMenu.close();
+  els.enterUPCModal.showModal();
+  setTimeout(()=> els.enterUPCInput.focus(), 75);
+});
+els.enterUPCForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const raw = (els.enterUPCInput.value||"").replace(/\D+/g,'').trim();
+  if(!raw){ els.enterUPCModal.close(); return; }
+  els.enterUPCModal.close();
+  await handleUPC(raw);
+});
+
+/* Kickoff */
 loadFromSheet().then(centerFirstCardIfMobile).catch(()=>{
   alert("Couldn’t load the Google Sheet. Make sure your link is published as CSV (output=csv).");
 });
