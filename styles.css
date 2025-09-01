@@ -8,6 +8,9 @@
   --accent-2: #90e9b3;
   --border: #1c232e;
   --shadow: 0 10px 30px rgba(0,0,0,.25);
+
+  /* dynamic header height set by JS; fallback for very first paint */
+  --header-h: 140px;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -18,15 +21,16 @@ body{
     radial-gradient(1400px 700px at 50% -15%, #111723 0%, var(--bg) 55%),
     linear-gradient(to bottom, var(--bg2), var(--bg));
   color:var(--fg);
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Header (fully sticky) */
+/* Header — now FIXED so it never disappears */
 .site-header{
-  position:sticky; top:0; z-index:50;
+  position:fixed; top:0; left:0; right:0; z-index:1000;
   backdrop-filter: blur(10px);
-  background: linear-gradient(to bottom, rgba(15,19,25,.95), rgba(15,19,25,.75) 65%, rgba(15,19,25,0));
+  background: linear-gradient(to bottom, rgba(15,19,25,.98), rgba(15,19,25,.85) 65%, rgba(15,19,25,0));
   border-bottom:1px solid var(--border);
-  padding:14px clamp(12px,2vw,28px) 10px;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) clamp(12px,2vw,28px) 10px;
 }
 .brand{display:flex;align-items:center;gap:10px}
 .brand .logo{font-size:24px}
@@ -41,28 +45,33 @@ body{
 #search::placeholder{color:var(--muted)}
 
 /* Buttons */
-.btn-row{margin-top:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center}
+.btn-row{
+  margin-top:12px;display:flex;flex-wrap:nowrap;gap:10px;align-items:center;
+  overflow-x:auto; -webkit-overflow-scrolling: touch; padding-bottom:6px;
+}
+.btn-row::-webkit-scrollbar{height:0}
 .btn,.seg-btn,select.btn,a.btn{
-  padding:10px 16px;border-radius:14px;border:1px solid var(--border);
+  padding:12px 16px;border-radius:14px;border:1px solid var(--border);
   background:linear-gradient(180deg,#14202e,#0f1723); color:var(--fg); cursor:pointer;
   font-weight:700; font-size:15px; letter-spacing:.2px;
   transition:transform .06s ease, background .2s ease, border-color .2s ease;
   box-shadow:var(--shadow);
   text-decoration:none;
   display:inline-flex; align-items:center; justify-content:center;
+  touch-action: manipulation;
 }
 .btn:hover,.seg-btn:hover{transform:translateY(-1px)}
 .btn:active,.seg-btn:active{transform:translateY(0)}
 select.btn{appearance:none}
-.btn.small{padding:8px 12px;font-weight:700;font-size:14px}
+.btn.small{padding:9px 12px;font-weight:700;font-size:14px}
 
 /* Segmented toggle */
-.segmented{display:inline-flex;background:#121a26;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px}
-.seg-btn{background:transparent;border:none;padding:8px 12px;border-radius:10px}
+.segmented{display:inline-flex;background:#121a26;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px; flex:0 0 auto;}
+.seg-btn{background:transparent;border:none;padding:8px 12px;border-radius:10px; white-space:nowrap;}
 .seg-btn.active{background:#1a2434;border:1px solid #233047}
 
-/* Layout */
-main{padding:18px clamp(10px,2vw,28px) 28px}
+/* Layout — add top padding so content doesn’t sit under fixed header */
+main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .view{display:none}
 .view.active{display:block}
 
@@ -150,8 +159,9 @@ dialog#scanModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,20,
 
 /* Mobile tweaks */
 @media (max-width: 720px){
-  .btn-row{justify-content:center}
-  main{padding-top:22px}
+  .btn-row{justify-content:flex-start}
+  main{padding: calc(var(--header-h) + 10px) 12px 20px}
   .scroller{grid-auto-columns:minmax(86vw,94vw);gap:16px;padding:14px 52px 26px}
+  .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
   .form-grid{grid-template-columns:1fr}
 }
