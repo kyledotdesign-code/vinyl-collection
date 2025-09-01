@@ -9,7 +9,7 @@ const SHEET_CSV =
 
 // Your Google Apps Script Web App URL
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbwpf5emXEyiy-vTaq7bnZzOzC7TxFSy53XqO9mId1wTSze0m-KLxyrbnWRT0xohwK4TRg/exec";
+  "https://script.google.com/macros/s/AKfycbwmcZPZbg3-Cfev8OTt_YGIsrTZ3Lb_BZ2xQ5bRxh9Hpy9OvkYkOqeubtl1MQ4OGqZAJw/exec";
 
 // 1) ELEMENTS
 const $ = (s, r = document) => r.querySelector(s);
