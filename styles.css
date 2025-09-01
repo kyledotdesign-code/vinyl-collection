@@ -109,7 +109,15 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 }
 
 /* Card */
-.card{scroll-snap-align:start;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:10px;box-shadow:var(--shadow)}
+.card{
+  scroll-snap-align:start;
+  scroll-snap-stop: always;        /* <- stop drifting past cards */
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:10px;
+  box-shadow:var(--shadow)
+}
 .sleeve{perspective:1200px;position:relative;width:100%;aspect-ratio:1/1;border-radius:12px;overflow:hidden}
 .face{position:absolute;inset:0;backface-visibility:hidden;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
 .card.flipped .front{transform:rotateY(180deg)}
@@ -137,7 +145,7 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,20
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{background:#142549;border:1px solid #20335d;color:#cfe2ff;padding:6px 10px;border-radius:999px;font-weight:800}
 
-/* Scan modal (unchanged visuals) */
+/* Scan modal */
 dialog#scanModal{border:none;padding:0;background:transparent}
 dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,.55)}
 .scan-card{
@@ -146,56 +154,84 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,
   border:none;border-radius:16px;background:#111722;color:var(--fg);box-shadow:var(--shadow);
   display:flex;flex-direction:column;gap:12px;overflow:auto;
   overscroll-behavior: contain;
+
+  /* NEW: pad content so video/frame/buttons never touch rounded edges */
+  padding: calc(12px + env(safe-area-inset-top,0px))
+           clamp(12px, 3vw, 18px)
+           calc(14px + env(safe-area-inset-bottom,0px));
 }
 .scan-head{
   position:sticky; top:0; z-index:2;
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   background:linear-gradient(180deg, #111722 92%, rgba(17,23,34,0));
-  padding:12px clamp(12px, 2vw, 18px) 8px;
+  padding:0 0 8px;
 }
 .scan-actions{display:flex;gap:8px;flex-wrap:nowrap}
-.video-wrap{position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0a0f18;flex:0 0 auto}
-.video-wrap video{display:block;width:100%;max-height:46dvh;aspect-ratio: 4 / 3; object-fit:cover;background:#000}
-.scan-overlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.video-wrap{
+  position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0a0f18;flex:0 0 auto;
+
+  /* NEW: inner breathing room so the scan frame never looks clipped */
+  padding:10px;
+}
+.video-wrap video{
+  display:block;width:100%;
+  max-height:46dvh;
+  aspect-ratio: 4 / 3; object-fit:cover; background:#000;
+  border-radius:10px;
+}
+.scan-overlay{position:absolute;inset:10px;display:grid;place-items:center;pointer-events:none}
 .scan-frame{
-  position:relative;width:min(82vw, 460px);height:min(36dvh, 320px);
-  border:2px solid rgba(255,255,255,.85);border-radius:12px;box-shadow: 0 0 0 9999px rgba(0,0,0,.35) inset;
+  position:relative;
+  width:100%;
+  height:min(34dvh, 300px);
+  border:2px solid rgba(255,255,255,.85);
+  border-radius:10px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.35) inset;
 }
 .scan-frame::after{
   content:""; position:absolute; left:10%; right:10%; height:2px; top:10%;
-  background:rgba(255,255,255,.9); border-radius:2px; animation:sweep 2.2s ease-in-out infinite;
+  background:rgba(255,255,255,.9); border-radius:2px;
+  animation:sweep 2.2s ease-in-out infinite;
 }
-@keyframes sweep{ 0%{top:10%} 50%{top:calc(100% - 10%)} 100%{top:10%} }
-.scan-hint{ position:absolute;left:12px;bottom:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;backdrop-filter: blur(3px) }
+@keyframes sweep{ 0%{ top:10% } 50%{ top:calc(100% - 10%) } 100%{ top:10% } }
+.scan-hint{
+  position:absolute;left:18px;bottom:16px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;
+  backdrop-filter: blur(3px);
+}
 .scan-status{margin-top:6px;color:#cfe2ff}
-.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px;padding:0 clamp(12px,2vw,18px) 12px}
+
+/* Form */
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px}
 .form-grid label{display:grid;gap:6px}
 .form-grid label.wide{grid-column:1 / -1}
-.form-grid input,.form-grid textarea{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#101827;color:#fff;font-size:16px}
+.form-grid input,.form-grid textarea{
+  width:100%; padding:12px 14px; border-radius:10px;
+  border:1px solid var(--border); background:#101827; color:#fff; font-size:16px;
+}
 .form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px}
-.form-actions.sticky{position:sticky;bottom:0;z-index:1;padding:10px 0;background:linear-gradient(180deg, rgba(17,23,34,0), rgba(17,23,34,1) 40%);margin-top:8px}
+.form-actions.sticky{
+  position:sticky; bottom:0; z-index:1;
+  padding:10px 0;
+  background:linear-gradient(180deg, rgba(17,23,34,0), rgba(17,23,34,1) 40%);
+  margin-top:8px;
+}
 
 /* === MOBILE POLISH (iPhone 17 Pro Max included) === */
 @media (max-width: 720px){
   .btn-row{justify-content:flex-start}
   main{padding: calc(var(--header-h) + 10px) 12px 20px}
 
-  /* Center the single card precisely within the content width (not 100vw) */
   .scroller{
-    --card-w: 86vw;                /* base width of a card on phones */
+    --card-w: 86vw;
     grid-auto-columns: var(--card-w);
-    padding:14px 0 26px;           /* remove side pad; main already has it */
+    padding:14px 0 26px;     /* no side padding; we center with spacers */
     gap:16px;
     scroll-snap-type:x mandatory;
   }
-  /* spacers use container width (100%), not 100vw, so it's perfectly centered inside main */
   .scroller::before,
   .scroller::after{ content:""; display:block; width:calc((100% - var(--card-w))/2); }
-
-  /* snap to center on phones */
   .card{ scroll-snap-align: center; }
 
-  /* arrows respect safe areas and tuck in slightly */
   .nav-arrow{ width:42px; height:42px; }
   .nav-arrow.left{ left: max(6px, env(safe-area-inset-left, 0px) + 6px); }
   .nav-arrow.right{ right: max(6px, env(safe-area-inset-right, 0px) + 6px); }
@@ -204,12 +240,11 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,
 
   dialog#scanModal{padding:0}
   .scan-card{
-    width:100svw; max-width:none;             /* small viewport width to avoid iOS bounce */
+    width:100svw; max-width:none;
     height:100dvh; max-height:none;
     border-radius:16px 16px 0 0;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-  .scan-frame{width:86vw; height:min(34dvh, 300px)}
+  .scan-frame{height:min(32dvh, 280px)}
   .scan-hint{font-size:14px}
 }
 
