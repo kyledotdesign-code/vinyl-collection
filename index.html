@@ -26,10 +26,9 @@
       <input id="search" type="search" placeholder="Search" autocomplete="off" />
 
       <div class="btn-row">
-        <!-- Scan UPC first -->
-        <button id="scanBtn" class="btn">Scan UPC</button>
+        <!-- Renamed from “Scan UPC” to “Scan” -->
+        <button id="scanBtn" class="btn">Scan</button>
 
-        <!-- View toggle -->
         <div class="segmented" role="tablist" aria-label="View toggle">
           <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
           <button id="view-grid"   class="seg-btn"         role="tab" aria-selected="false">View: Grid</button>
@@ -83,11 +82,12 @@
     </div>
   </dialog>
 
-  <!-- Scan UPC modal -->
+  <!-- Scan modal (cosmetic/mobile polish) -->
   <dialog id="scanModal">
     <div class="scan-card">
       <div class="scan-head">
-        <h2>Scan UPC</h2>
+        <!-- Renamed heading -->
+        <h2>Scan</h2>
         <div class="scan-actions">
           <button id="manualUPC" class="btn small" type="button">Enter UPC manually</button>
           <form method="dialog"><button id="closeScan" class="btn small" type="submit">Close</button></form>
@@ -130,7 +130,6 @@
     </div>
   </dialog>
 
-  <!-- Card template -->
   <template id="cardTpl">
     <article class="card" role="listitem">
       <div class="sleeve" aria-live="polite">
