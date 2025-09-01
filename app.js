@@ -3,7 +3,7 @@
    - Search expands in header; auto-closes on scroll/outside click
    - Width is capped so it never overlaps the title/logo
    - Inverted FAB (white with black plus)
-   - All previous features preserved
+   - Subtle vinyl circle on back face handled via CSS (no JS needed)
 --------------------------------------------*/
 
 // 0) CONFIG
