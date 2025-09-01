@@ -19,11 +19,11 @@
   <header class="site-header">
     <div class="brand-row">
       <div class="brand">
-        <span class="logo">🎵</span>
+        <span class="logo" aria-hidden="true">🎵</span>
         <h1>Vinyl Collection</h1>
       </div>
 
-      <!-- Search icon that expands -->
+      <!-- Search icon that expands; width capped so it never hits the title -->
       <div class="search-inline">
         <button id="searchToggle" class="icon-btn" aria-label="Search" aria-expanded="false">
           <!-- magnifier -->
@@ -125,7 +125,7 @@
 
   <!-- FAB (floating action button) -->
   <button id="fab" class="fab" aria-haspopup="dialog" aria-controls="fabMenu" aria-label="Add">
-    <span class="fab-plus">＋</span>
+    <span class="fab-plus" aria-hidden="true">＋</span>
   </button>
 
   <!-- FAB menu (action sheet) -->
