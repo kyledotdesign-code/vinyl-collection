@@ -2,13 +2,14 @@
    Vinyl Collection — app.js
    - Scan modal: scan → autofill form → user submits to save
    - "Update Collection" button: clear local state & reload from Sheet
+   - Better server error reporting
 --------------------------------------------*/
 
 // 0) CONFIG
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
 
-// IMPORTANT: update with your current Web App URL after deploying server.gs
+// IMPORTANT: paste your *current* Web App URL (/exec) here
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbwmcZPZbg3-Cfev8OTt_YGIsrTZ3Lb_BZ2xQ5bRxh9Hpy9OvkYkOqeubtl1MQ4OGqZAJw/exec";
 
@@ -21,7 +22,7 @@ const els = {
   viewGridBtn: $('#view-grid'),
   sort: $('#sort'),
   shuffle: $('#shuffle'),
-  refresh: $('#refresh'),        // NEW
+  refresh: $('#refresh'),
   statsBtn: $('#statsBtn'),
   scroller: $('#scroller'),
   grid: $('#grid'),
@@ -118,7 +119,7 @@ function placeholderFor(a,b){
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-// 6) LOAD & NORMALIZE (source of truth = Google Sheet)
+// 6) LOAD & NORMALIZE
 async function loadFromSheet(){
   const res = await fetch(SHEET_CSV, { cache:"no-store" }); const text = await res.text();
   if(!text || text.trim().startsWith("<")){ console.error("Not CSV"); return; }
@@ -138,7 +139,6 @@ async function loadFromSheet(){
   state.all=recs; state.filtered=[...recs]; applySort(); render();
   await resolveCovers(recs,6); render();
 }
-
 async function resolveCovers(records,concurrency=6){
   let i=0; const workers=Array.from({length:concurrency},async()=>{
     while(i<records.length){ const idx=i++; const r=records[idx];
@@ -205,16 +205,13 @@ els.search.addEventListener('input',(e)=>{
 });
 els.sort.addEventListener('change',()=>{ state.sortKey=els.sort.value||'title'; applySort(); render(); });
 els.shuffle.addEventListener('click',()=>{
-  for(let i=state.filtered.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [state.filtered[i],state.filtered[j]]=[state.filtered[j],state.filtered[i]]; }
+  for(let i=state.filtered.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [state.filtered[i],state.filtered[j]]=[state.filtered[j]],state.filtered[i]]; }
   render();
 });
 
 // NEW: Update button — reload from Sheet & clear local state
-els.refresh.addEventListener('click', async ()=>{
-  // If scan modal is open, close & stop camera
+els.refresh?.addEventListener('click', async ()=>{
   if (els.scanModal?.open) closeScanModal();
-
-  // Clear UI inputs
   els.search.value = '';
   state.pending = null;
   els.scanForm?.reset?.();
@@ -222,23 +219,16 @@ els.refresh.addEventListener('click', async ()=>{
   if (els.saveRecord) els.saveRecord.disabled = true;
   els.scanStatus.textContent = '';
 
-  // Clear local optimistic items and re-fetch from Sheet
   const originalText = els.refresh.textContent;
-  els.refresh.disabled = true;
-  els.refresh.textContent = 'Updating…';
-
+  els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
   try {
-    state.all = [];
-    state.filtered = [];
-    render(); // optional quick clear
-    // Keep current sort/view, just reload collection from CSV
+    state.all = []; state.filtered = []; render();
     await loadFromSheet();
   } catch (err) {
     console.error(err);
     alert('Update failed. Check your published CSV link.');
   } finally {
-    els.refresh.disabled = false;
-    els.refresh.textContent = originalText;
+    els.refresh.disabled = false; els.refresh.textContent = originalText;
   }
 });
 
@@ -309,20 +299,28 @@ async function lookupByUPC(upc){
   return { title, artist, upc, coverRaw: coverUrl||"", altRaw:"", notes:"", genre:"" };
 }
 
-// 13) ADD TO GOOGLE SHEET — strict confirmation
+// 13) ADD TO GOOGLE SHEET — strict JSON + detailed errors
 async function addRecordToSheet(rec){
   const form=new URLSearchParams({
     title:rec.title||"", artist:rec.artist||"", upc:rec.upc||"",
     genre:rec.genre||"", notes:rec.notes||"",
     cover:rec.coverRaw||"", alt:rec.altRaw||""
   });
+
   const resp = await fetch(APPS_SCRIPT_URL,{
     method:'POST',
     headers:{ 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' },
     body: form.toString()
   });
-  const json = await resp.json().catch(()=>null);
-  if(!json || !json.ok){ throw new Error(json?.error || `Server did not confirm (status ${resp.status})`); }
+
+  let json=null, text="";
+  try { json = await resp.clone().json(); } catch { text = await resp.text().catch(()=>"(no body)"); }
+
+  if(!json || !json.ok){
+    const snippet = (text || JSON.stringify(json)).slice(0,300).replace(/\s+/g,' ').trim();
+    const msg = `Server did not confirm (status ${resp.status}). Response: ${snippet || '(empty)'}`;
+    throw new Error(msg);
+  }
   return json;
 }
 
@@ -420,7 +418,7 @@ els.scanForm.addEventListener('submit', async (e)=>{
     setTimeout(()=> closeScanModal(), 900);
   }catch(err){
     console.error(err);
-    els.scanStatus.textContent = "Saved locally, but server didn’t confirm. Check Web App URL & access.";
+    els.scanStatus.textContent = "Saved locally. " + err.message;
   } finally {
     els.saveRecord.disabled=false;
   }
