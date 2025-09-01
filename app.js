@@ -4,7 +4,8 @@
    - "Update Collection" button: clear local state & reload from Sheet
    - Mobile-friendly scanning: ZXing fallback for iOS/Android
    - Detailed server error reporting
-   - NEW: Save button shows "Saving..." while saving
+   - Success message: "Saved"
+   - More reliable cover fetching on add (Cover Art Archive front-500 URLs)
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -291,25 +292,37 @@ function openStats(){
 }
 els.statsBtn.addEventListener('click',openStats);
 
-// 12) UPC LOOKUP (MusicBrainz + Cover Art Archive)
+// 12) UPC LOOKUP (MusicBrainz + Cover Art Archive) — direct image URL fallback
 async function lookupByUPC(upc){
   const url=`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r=await fetch(url,{ headers:{ 'Accept':'application/json' }});
   if(!r.ok) throw new Error('MusicBrainz request failed');
   const j=await r.json(); const releases=j?.releases||[];
   if(!releases.length) throw new Error('No releases found for that UPC');
-  releases.sort((a,b)=>{ const ac=(a['cover-art-archive']?.front?1:0)-(b['cover-art-archive']?.front?1:0); if(ac!==0) return -ac; return (b.score||0)-(a.score||0); });
+
+  // Prefer a release that *claims* to have front cover art
+  releases.sort((a,b)=>{
+    const af = a['cover-art-archive']?.front ? 1 : 0;
+    const bf = b['cover-art-archive']?.front ? 1 : 0;
+    if (af !== bf) return bf - af;
+    return (b.score||0) - (a.score||0);
+  });
+
   const rel=releases[0];
   const mbid=rel.id;
   const title=rel.title||'';
   const artist=(rel['artist-credit']||[]).map(c=>c?.name||c?.artist?.name).filter(Boolean).join(', ') || (rel['artist-credit-phrase']||'');
-  let coverUrl="";
-  try{
-    const artJson=await fetch(`https://coverartarchive.org/release/${mbid}`,{ headers:{ 'Accept':'application/json' }});
-    if(artJson.ok){ const art=await artJson.json(); const front=(art.images||[]).find(img=>img.front)||art.images?.[0]; coverUrl=front?.image||""; }
-    else { coverUrl=`https://coverartarchive.org/release/${mbid}/front`; }
-  }catch{}
-  return { title, artist, upc, coverRaw: coverUrl||"", altRaw:"", notes:"", genre:"" };
+
+  // Build a direct Cover Art Archive URL without fetching JSON (more reliable CORS-wise)
+  // Try release front, then release-group front
+  let coverUrl = "";
+  if (rel['cover-art-archive']?.front) {
+    coverUrl = `https://coverartarchive.org/release/${mbid}/front-500`;
+  } else if (rel['release-group']?.id) {
+    coverUrl = `https://coverartarchive.org/release-group/${rel['release-group'].id}/front-500`;
+  }
+
+  return { title, artist, upc, coverRaw: coverUrl || "", altRaw:"", notes:"", genre:"" };
 }
 
 // 13) ADD TO GOOGLE SHEET — strict JSON + detailed errors
@@ -339,8 +352,10 @@ async function addRecordToSheet(rec){
 
 // 14) OPTIMISTIC ADD + CONFIRM
 async function addToCollection(rec){
+  // Resolve a displayable cover immediately (wsrv proxy for speed/caching)
   rec.cover = await chooseCover(rec.coverRaw, rec.altRaw);
   state.all.unshift(rec); state.filtered=[...state.all]; applySort(); render();
+  // Then persist to the sheet
   return await addRecordToSheet(rec);
 }
 
@@ -528,7 +543,7 @@ async function handleUPC(upc){
   }
 }
 
-// 18) Submit form → save to sheet (button shows "Saving...")
+// 18) Submit form → save to sheet (button shows "Saving..." and success shows "Saved")
 els.scanForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const upc=(els.formUPC.value||"").trim();
@@ -550,9 +565,9 @@ els.scanForm.addEventListener('submit', async (e)=>{
   els.scanStatus.textContent = "Saving…";
 
   try{
-    const server = await addToCollection(rec);
-    els.scanStatus.textContent = `Saved to "${server.sheet}" (row ${server.row})`;
-    setTimeout(()=> closeScanModal(), 900);
+    await addToCollection(rec);
+    els.scanStatus.textContent = "Saved";
+    setTimeout(()=> closeScanModal(), 700);
   }catch(err){
     console.error(err);
     els.scanStatus.textContent = "Saved locally. " + err.message;
