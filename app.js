@@ -1,6 +1,7 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   (Scan modal: no "Enter manually" button; Save label shortened)
+   - Modern black theme + header search icon that expands
+   - All previous features preserved
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -13,22 +14,35 @@ const APPS_SCRIPT_URL =
 // 1) ELEMENTS
 const $ = (s, r = document) => r.querySelector(s);
 const els = {
+  // Header + search
+  header: document.querySelector('.site-header'),
   search: $('#search'),
+  searchToggle: $('#searchToggle'),
+  searchClose: $('#searchClose'),
+
+  // View / controls
   viewScrollBtn: $('#view-scroll'),
   viewGridBtn: $('#view-grid'),
   sort: $('#sort'),
   shuffle: $('#shuffle'),
   refresh: $('#refresh'),
   statsBtn: $('#statsBtn'),
+
+  // Lists
   scroller: $('#scroller'),
   grid: $('#grid'),
   prev: $('#scrollPrev'),
   next: $('#scrollNext'),
+
+  // Stats
   statsModal: $('#statsModal'),
   statsBody: $('#statsBody'),
+
+  // Templates and views
   cardTpl: $('#cardTpl'),
   scrollView: $('#scrollView'),
   gridView: $('#gridView'),
+
   // Scan modal + form
   scanModal: $('#scanModal'),
   scanVideo: $('#scanVideo'),
@@ -42,11 +56,13 @@ const els = {
   formGenre: $('#formGenre'),
   formNotes: $('#formNotes'),
   saveRecord: $('#saveRecord'),
+
   // FAB + menus
   fab: $('#fab'),
   fabMenu: $('#fabMenu'),
   fabScan: $('#fabScan'),
   fabEnter: $('#fabEnter'),
+
   // Enter UPC modal
   enterUPCModal: $('#enterUPCModal'),
   enterUPCForm: $('#enterUPCForm'),
@@ -62,6 +78,24 @@ const els = {
   if ('ResizeObserver' in window && header){ new ResizeObserver(apply).observe(header); } else { setTimeout(apply, 300); }
 })();
 
+// 1b) Search icon → expand/collapse
+(function wireSearch(){
+  if (!els.search || !els.searchToggle || !els.searchClose || !els.header) return;
+  const open = () => {
+    els.header.classList.add('search-open');
+    els.searchToggle.setAttribute('aria-expanded','true');
+    setTimeout(()=> els.search.focus(), 60);
+  };
+  const close = () => {
+    els.header.classList.remove('search-open');
+    els.searchToggle.setAttribute('aria-expanded','false');
+  };
+  els.searchToggle.addEventListener('click', open);
+  els.searchClose.addEventListener('click', close);
+  // ESC to close
+  els.search.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') { close(); els.search.blur(); } });
+})();
+
 // 2) STATE
 const state = {
   all: [], filtered: [],
@@ -74,7 +108,7 @@ const state = {
 
 const withBust = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
 
-// 3) CSV parser/helpers (unchanged from prior)
+// 3) CSV + helpers
 function parseCSV(text){
   const rows=[]; let cur=['']; let i=0,inQ=false;
   for(; i<text.length; i++){
@@ -121,8 +155,8 @@ async function chooseCover(coverRaw, altRaw){
 function placeholderFor(a,b){
   const letter=(b||a||"?").trim().charAt(0).toUpperCase()||"?";
   const svg=`<svg xmlns='http://www.w3.org/2000/svg' width='1000' height='1000'>
-    <rect width='100%' height='100%' fill='#1b2330'/><circle cx='500' cy='500' r='380' fill='#121a26'/>
-    <text x='50%' y='56%' text-anchor='middle' font-family='Inter,Arial' font-size='420' font-weight='800' fill='#a7b9da'>${letter}</text>
+    <rect width='100%' height='100%' fill='#121212'/><circle cx='500' cy='500' r='380' fill='#0b0b0b'/>
+    <text x='50%' y='56%' text-anchor='middle' font-family='Inter,Arial' font-size='420' font-weight='800' fill='#bfc3ca'>${letter}</text>
   </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
@@ -369,7 +403,7 @@ async function addToCollection(rec){
   await addRecordToSheet(rec);
 }
 
-// 11) Scan engines
+// 11) Scan engines (ZXing / BarcodeDetector)
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
@@ -547,11 +581,7 @@ els.scanForm.addEventListener('submit', async (e)=>{
 // 15) Update Collection (hard resync)
 els.refresh?.addEventListener('click', async ()=>{
   if (els.scanModal?.open) closeScanModal();
-  els.search.value = ''; state.pending = null;
-  els.scanForm?.reset?.(); if (els.formUPC) els.formUPC.value = '';
-  if (els.saveRecord) els.saveRecord.disabled = true;
-  els.scanStatus.textContent = '';
-
+  // keep search state; just refresh data
   const originalText = els.refresh.textContent;
   els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
   try { state.all = []; state.filtered = []; render(); await loadFromSheet(true); }
