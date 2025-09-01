@@ -1,8 +1,8 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   - Cosmetic-only: no logic changes from your latest
-   - Fixed header offset helper (unchanged)
-   - Scan modal uses same behavior; labels updated in HTML
+   Cosmetic-focused update:
+   - Adds body modal-open class to prevent background scroll on mobile
+   - Keeps all previous behavior (scan, save, resync) intact
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -118,7 +118,7 @@ function pickField(row, keys){
   return "";
 }
 
-// 5) ARTWORK HELPERS
+// 5) ARTWORK
 function wsrv(url){ return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`; }
 async function fromWikipediaPage(u){
   const m=u.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i); if(!m) return "";
@@ -238,7 +238,7 @@ els.sort.addEventListener('change',()=>{ state.sortKey=els.sort.value||'title'; 
 els.shuffle.addEventListener('click',()=>{
   for(let i=state.filtered.length-1;i>0;i--){
     const j=Math.floor(Math.random()*(i+1));
-    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
+    [state.filtered[i], state.filtered[j]] = [state.filtered[j]], [state.filtered[i]];
   }
   render();
 });
@@ -289,7 +289,7 @@ function openStats(){
 }
 els.statsBtn.addEventListener('click',openStats);
 
-// 12) UPC LOOKUP (unchanged logic)
+// 12) UPC LOOKUP (MusicBrainz + Cover Art Archive)
 async function lookupByUPC(upc){
   const url=`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r=await fetch(url,{ headers:{ 'Accept':'application/json' }});
@@ -319,7 +319,7 @@ async function lookupByUPC(upc){
   return { title, artist, upc, coverRaw: coverUrl || "", altRaw:"", notes:"", genre:"" };
 }
 
-// 13) Add to Google Sheet (unchanged)
+// 13) Add to Google Sheet
 async function addRecordToSheet(rec){
   const form=new URLSearchParams({
     title:rec.title||"", artist:rec.artist||"", upc:rec.upc||"",
@@ -342,14 +342,14 @@ async function addRecordToSheet(rec){
   return json;
 }
 
-// 14) Optimistic add (unchanged)
+// 14) Optimistic add
 async function addToCollection(rec){
   rec.cover = await chooseCover(rec.coverRaw, rec.altRaw);
   state.all.unshift(rec); state.filtered=[...state.all]; applySort(); render();
   await addRecordToSheet(rec);
 }
 
-// 15) Scanning engines (unchanged behavior)
+// 15) Scanning engines (unchanged logic)
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
@@ -473,15 +473,18 @@ async function stopScanEngines(){
   state.usingZXing = false;
 }
 
-// 16) Modal open/close
+// 16) Modal open/close (now toggles body scroll lock)
 async function openScanModal(){
   els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
   els.scanModal.showModal();
+  document.body.classList.add('modal-open');        // lock background scroll on mobile
   try{ els.scanHint.textContent='Starting camera…'; await startScanEngine(); }
   catch{ els.scanStatus.textContent='Camera unavailable. Use “Enter UPC manually.”'; }
 }
-function closeScanModal(){ stopScanEngines(); els.scanModal.close(); }
-
+function closeScanModal(){
+  stopScanEngines(); els.scanModal.close();
+  document.body.classList.remove('modal-open');     // unlock background scroll
+}
 els.scanBtn.addEventListener('click',openScanModal);
 els.closeScan?.addEventListener('click',closeScanModal);
 els.manualUPC.addEventListener('click',async ()=>{
