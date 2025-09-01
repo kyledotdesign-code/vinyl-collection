@@ -1,5 +1,5 @@
 :root{
-  /* Lightened modern dark theme (just a tad) */
+  /* Lightened modern dark theme */
   --bg: #0b0e13;
   --bg2:#12161b;
   --fg: #f6f7f9;
@@ -76,7 +76,7 @@ body.modal-open{overflow:hidden}
 
 /* Buttons row */
 .btn-row{
-  margin-top:8px;display:flex;flex-wrap:nowrap;gap:10px;align-items:center;
+  margin-top:8px;display:flex;flex-wrap:nowrap;gap:10px;align-items:center;justify-content:flex-start;
   overflow-x:auto; -webkit-overflow-scrolling: touch; padding-bottom:6px;
 }
 .btn-row::-webkit-scrollbar{height:0}
@@ -101,12 +101,6 @@ select.btn{
 .btn.wide{width:100%}
 .btn.outline{background:transparent;border:1px solid #2f3742}
 .btn.subtle{background:#131921;border:1px solid #1f2530}
-
-/* Inverted button (white) */
-.btn.invert{
-  background:#ffffff; color:#000; border-color:#e6e6e6;
-  box-shadow: 0 10px 24px rgba(255,255,255,.08), 0 10px 24px rgba(0,0,0,.35);
-}
 
 /* Segmented toggle */
 .segmented{ display:inline-flex;background:#151a22;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px;flex:0 0 auto }
@@ -186,26 +180,25 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.
 .stats-card{max-width:720px;width:min(92vw,720px);border:none;border-radius:16px;padding:18px;background:#131821;color:var(--fg);box-shadow:var(--shadow)}
 .stats-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .stats-body{display:grid;gap:14px}
-.stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.stat-tile{background:#151b24;border:1px solid var(--border);border-radius:12px;padding:12px;display:grid;gap:6px;text-align:center}
-.stat-big{font-size:28px;font-weight:800;color:var(--accent)}
-.chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{background:#16263d;border:1px solid #27466f;color:#def0ff;padding:6px 10px;border-radius:999px;font-weight:800}
 
-/* Scan modal — width/padding fixed to avoid right clipping */
+/* Scan modal — tweaked to avoid right clipping on iOS */
 dialog#scanModal{border:none; padding:0; background:transparent; inset:0;}
 dialog#scanModal[open]{display:grid; place-items:center;}
 dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.55)}
 .scan-card{
   box-sizing:border-box;
-  width: min(860px, calc(100vw - 32px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
-  margin: 0 auto;
-  overflow-x:hidden;
+  /* full-width calculation with safe-area and a tiny margin so it never clips */
+  width: min(
+    860px,
+    calc(100dvw - 24px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px))
+  );
+  margin: 12px auto; /* center and keep away from edges */
+  overflow:hidden; /* prevent any inner overflow from causing horizontal scroll */
   border:none;border-radius:16px;background:#131821;color:var(--fg);box-shadow:var(--shadow);
   display:flex;flex-direction:column;gap:12px;
   padding: calc(14px + env(safe-area-inset-top,0px))
            var(--side-pad)
-           calc(26px + env(safe-area-inset-bottom,0px)); /* a little more bottom padding */
+           calc(28px + env(safe-area-inset-bottom,0px)); /* more bottom padding */
 }
 .scan-head{
   position:sticky; top:0; z-index:2;
@@ -246,7 +239,7 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 .form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px}
 .form-actions.sticky{
   position:sticky; bottom:0; z-index:1;
-  padding:12px 0 calc(14px + env(safe-area-inset-bottom,0px));
+  padding:12px 0 calc(16px + env(safe-area-inset-bottom,0px));
   background:linear-gradient(180deg, rgba(19,24,33,0), rgba(19,24,33,1) 40%);
   margin-top:8px;
 }
@@ -276,7 +269,7 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 }
 #fabMenu .sheet-title{margin:0 0 12px;font-size:18px;color:#fff}
 #fabMenu .sheet-title span{color:#fff}
-#fabMenu .sheet .sheet-actions{display:grid; gap:14px; margin-bottom:16px;} /* more space above Close */
+#fabMenu .sheet .sheet-actions{display:grid; gap:14px; margin-bottom:18px;}
 #fabMenu .sheet .sheet-close{margin-top:4px}
 
 /* Enter UPC modal */
@@ -288,7 +281,7 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
   background:#131821;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow);
   display:grid; gap:12px;
 }
-.enter-form h3{margin:0 0 2px}
+.enter-form h3{margin:0 0 2px; color:#fff;} /* make the title white explicitly */
 #enterUPCInput{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#0f141b;color:#fff;font-size:16px;text-align:center}
 .enter-actions{display:flex;gap:10px;justify-content:flex-end}
 
@@ -312,9 +305,12 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 
+  /* Scan card: stronger guarantee against right-side clipping */
   .scan-card{
-    height: 100dvh; border-radius: 16px 16px 0 0;
-    width: min(860px, calc(100dvw - 16px*2 - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
+    width: calc(100dvw - 24px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));
+    height: auto;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+    overflow:auto;
   }
   .scan-frame{height:min(32dvh, 280px)}
   .scan-hint{font-size:14px}
