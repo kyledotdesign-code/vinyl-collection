@@ -26,7 +26,7 @@
       <input id="search" type="search" placeholder="Search" autocomplete="off" />
 
       <div class="btn-row">
-        <button id="scanBtn" class="btn">Scan</button>
+        <!-- Removed top Scan button (replaced by FAB) -->
 
         <div class="segmented" role="tablist" aria-label="View toggle">
           <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
@@ -111,6 +111,36 @@
     </div>
   </dialog>
 
+  <!-- FAB (floating action button) -->
+  <button id="fab" class="fab" aria-haspopup="dialog" aria-controls="fabMenu" aria-label="Add">
+    <span class="fab-plus">＋</span>
+  </button>
+
+  <!-- FAB menu (action sheet) -->
+  <dialog id="fabMenu">
+    <div class="sheet">
+      <h3>Add a record</h3>
+      <div class="sheet-actions">
+        <button id="fabScan" class="btn wide">Scan UPC</button>
+        <button id="fabEnter" class="btn wide outline">Enter UPC Code</button>
+      </div>
+      <form method="dialog"><button class="btn small subtle">Close</button></form>
+    </div>
+  </dialog>
+
+  <!-- Enter UPC (manual) small modal -->
+  <dialog id="enterUPCModal">
+    <form id="enterUPCForm" class="enter-form" method="dialog">
+      <h3>Enter UPC Code</h3>
+      <input id="enterUPCInput" type="text" inputmode="numeric" placeholder="e.g. 602547855215" autocomplete="off" />
+      <div class="enter-actions">
+        <button class="btn small subtle" value="cancel">Cancel</button>
+        <button id="enterUPCSumbit" class="btn small" value="ok">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Card template -->
   <template id="cardTpl">
     <article class="card" role="listitem">
       <div class="sleeve" aria-live="polite">
