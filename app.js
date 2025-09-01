@@ -1,6 +1,7 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   Mobile scroll-centering + tiny bugfix in shuffle
+   - Centers first card on phones with rAF
+   - Arrow/safe-area handled by CSS
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -29,7 +30,6 @@ const els = {
   cardTpl: $('#cardTpl'),
   scrollView: $('#scrollView'),
   gridView: $('#gridView'),
-  // Scan
   scanBtn: $('#scanBtn'),
   scanModal: $('#scanModal'),
   scanVideo: $('#scanVideo'),
@@ -37,7 +37,6 @@ const els = {
   manualUPC: $('#manualUPC'),
   closeScan: $('#closeScan'),
   scanStatus: $('#scanStatus'),
-  // Form
   scanForm: $('#scanForm'),
   formUPC: $('#formUPC'),
   formArtist: $('#formArtist'),
@@ -50,35 +49,20 @@ const els = {
 // 1a) Fixed header offset
 (function setHeaderOffset(){
   const header = document.querySelector('.site-header');
-  const apply = () => {
-    if (!header) return;
-    document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px');
-  };
+  const apply = () => { if (header) document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px'); };
   window.addEventListener('load', apply, { once:true });
   window.addEventListener('resize', apply);
-  if ('ResizeObserver' in window && header){
-    new ResizeObserver(apply).observe(header);
-  } else {
-    setTimeout(apply, 300);
-  }
+  if ('ResizeObserver' in window && header){ new ResizeObserver(apply).observe(header); } else { setTimeout(apply, 300); }
 })();
 
 // 2) STATE
 const state = {
-  all: [],
-  filtered: [],
-  sortKey: 'title',
-  view: 'scroll',
-  mediaStream: null,
-  scanning: false,
-  rafId: null,
-  detectorSupported: 'BarcodeDetector' in window,
-  detector: null,
-  usingZXing: false,
-  zxingReader: null,
-  zxingControls: null,
-  handlingUPC: false,
-  pending: null,
+  all: [], filtered: [],
+  sortKey: 'title', view: 'scroll',
+  mediaStream: null, scanning:false, rafId:null,
+  detectorSupported: 'BarcodeDetector' in window, detector:null,
+  usingZXing:false, zxingReader:null, zxingControls:null,
+  handlingUPC:false, pending:null,
 };
 
 const withBust = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
@@ -212,13 +196,19 @@ function createCard(rec){
   return node;
 }
 
+/* Center first card on phones using actual measurements.
+   Works with CSS ::before spacer and the main's inner padding. */
 function centerFirstCardIfMobile(){
   const isMobile = window.matchMedia('(max-width: 720px)').matches;
-  if (!isMobile) return;
+  if (!isMobile || !els.scrollView.classList.contains('active')) return;
+
   const first = els.scroller.querySelector('.card');
   if (!first) return;
-  const targetLeft = first.offsetLeft + first.offsetWidth/2 - els.scroller.clientWidth/2;
-  els.scroller.scrollLeft = Math.max(0, targetLeft);
+
+  requestAnimationFrame(()=>{
+    const targetLeft = first.offsetLeft + first.offsetWidth/2 - els.scroller.clientWidth/2;
+    els.scroller.scrollLeft = Math.max(0, Math.round(targetLeft));
+  });
 }
 
 function renderScroll(){
@@ -239,6 +229,10 @@ function render(){
   if(isScroll){ renderScroll(); toggleArrows(true); } else { renderGrid(); toggleArrows(false); }
 }
 
+// Re-center on orientation/resize when in scroll view (helps Pro/Max widths)
+window.addEventListener('resize', centerFirstCardIfMobile);
+window.addEventListener('orientationchange', centerFirstCardIfMobile);
+
 // 8) SEARCH / SORT / SHUFFLE
 function applySort(){
   const k=state.sortKey;
@@ -253,7 +247,7 @@ els.sort.addEventListener('change',()=>{ state.sortKey=els.sort.value||'title'; 
 els.shuffle.addEventListener('click',()=>{
   for(let i=state.filtered.length-1;i>0;i--){
     const j=Math.floor(Math.random()*(i+1));
-    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]]; // fixed swap
+    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
   }
   render();
 });
@@ -341,7 +335,13 @@ async function addRecordToSheet(rec){
     genre:rec.genre||"", notes:rec.notes||"",
     cover:rec.coverRaw||"", alt:rec.altRaw||""
   });
-  const resp = await fetch(APPS_SCRIPT_URL,{ method:'POST', headers:{ 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' }, body: form.toString() });
+
+  const resp = await fetch(APPS_SCRIPT_URL,{
+    method:'POST',
+    headers:{ 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: form.toString()
+  });
+
   let json=null, text="";
   try { json = await resp.clone().json(); } catch { text = await resp.text().catch(()=>"(no body)"); }
   if(!json || !json.ok){
@@ -358,7 +358,7 @@ async function addToCollection(rec){
   await addRecordToSheet(rec);
 }
 
-// 15) Scanning engines (unchanged)
+// 15) Scan engines (unchanged)
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
@@ -382,7 +382,6 @@ async function loadZXing(){
     };
   }
 }
-
 async function startZXing(){
   const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = await loadZXing();
   const hints = new Map();
@@ -409,7 +408,6 @@ async function startZXing(){
     });
   });
 }
-
 async function startBDCamera(){
   const constraints={ video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } }, audio:false };
   state.mediaStream=await navigator.mediaDevices.getUserMedia(constraints);
@@ -438,14 +436,12 @@ async function scanLoop(){
   }catch(err){ console.error('scanLoop error',err); }
   state.rafId=requestAnimationFrame(scanLoop);
 }
-
 async function startScanEngine(){
   state.handlingUPC = false;
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   try{
     if (isMobile || !state.detectorSupported) {
-      els.scanHint.textContent = 'Scanning (ZXing)…';
-      await startZXing();
+      els.scanHint.textContent = 'Scanning (ZXing)…'; await startZXing();
     } else {
       await startBDCamera();
       setTimeout(async ()=>{
@@ -466,13 +462,11 @@ async function startScanEngine(){
     }
   }
 }
-
 async function stopScanEngines(){
   state.scanning=false;
   if(state.rafId) cancelAnimationFrame(state.rafId);
   if(state.mediaStream){ for(const t of state.mediaStream.getTracks()){ t.stop(); } state.mediaStream=null; }
   els.scanVideo.pause(); els.scanVideo.srcObject=null;
-
   if (state.zxingControls) { try { state.zxingControls.stop(); } catch{} state.zxingControls = null; }
   if (state.zxingReader) { try { state.zxingReader.reset(); } catch{} state.zxingReader = null; }
   state.usingZXing = false;
@@ -481,15 +475,11 @@ async function stopScanEngines(){
 // 16) Modal open/close
 async function openScanModal(){
   els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
-  els.scanModal.showModal();
-  document.body.classList.add('modal-open');
+  els.scanModal.showModal(); document.body.classList.add('modal-open');
   try{ els.scanHint.textContent='Starting camera…'; await startScanEngine(); }
   catch{ els.scanStatus.textContent='Camera unavailable. Use “Enter UPC manually.”'; }
 }
-function closeScanModal(){
-  stopScanEngines(); els.scanModal.close();
-  document.body.classList.remove('modal-open');
-}
+function closeScanModal(){ stopScanEngines(); els.scanModal.close(); document.body.classList.remove('modal-open'); }
 els.scanBtn.addEventListener('click',openScanModal);
 els.closeScan?.addEventListener('click',closeScanModal);
 els.manualUPC.addEventListener('click',async ()=>{
@@ -512,9 +502,7 @@ async function handleUPC(upc){
     state.pending={ upc, title:"", artist:"", genre:"", notes:"", coverRaw:"", altRaw:"" };
     els.formUPC.value=upc; els.formArtist.value=""; els.formTitle.value=""; els.formGenre.value=""; els.formNotes.value="";
     els.saveRecord.disabled=false; els.scanStatus.textContent=`No match found. Enter details and Save`; els.formArtist.focus();
-  } finally {
-    state.handlingUPC = false;
-  }
+  } finally { state.handlingUPC = false; }
 }
 
 // 18) Submit form → save
@@ -553,26 +541,19 @@ els.scanForm.addEventListener('submit', async (e)=>{
 // 19) Update Collection (hard resync)
 els.refresh?.addEventListener('click', async ()=>{
   if (els.scanModal?.open) closeScanModal();
-  els.search.value = '';
-  state.pending = null;
-  els.scanForm?.reset?.();
-  if (els.formUPC) els.formUPC.value = '';
+  els.search.value = ''; state.pending = null;
+  els.scanForm?.reset?.(); if (els.formUPC) els.formUPC.value = '';
   if (els.saveRecord) els.saveRecord.disabled = true;
   els.scanStatus.textContent = '';
 
   const originalText = els.refresh.textContent;
   els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
-  try {
-    state.all = []; state.filtered = []; render();
-    await loadFromSheet(true);
-  } catch {
-    alert('Update failed. Check your published CSV link.');
-  } finally {
-    els.refresh.disabled = false; els.refresh.textContent = originalText;
-  }
+  try { state.all = []; state.filtered = []; render(); await loadFromSheet(true); }
+  catch { alert('Update failed. Check your published CSV link.'); }
+  finally { els.refresh.disabled = false; els.refresh.textContent = originalText; }
 });
 
 // 20) Kickoff
-loadFromSheet().catch(()=>{
+loadFromSheet().then(centerFirstCardIfMobile).catch(()=>{
   alert("Couldn’t load the Google Sheet. Make sure your link is published as CSV (output=csv).");
 });
