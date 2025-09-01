@@ -58,6 +58,7 @@ const els = {
   enterUPCInput: $('#enterUPCInput'),
 };
 
+/* Header size -> main padding */
 (function setHeaderOffset(){
   const header = document.querySelector('.site-header');
   const apply = () => { if (header) document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px'); };
@@ -66,6 +67,7 @@ const els = {
   if ('ResizeObserver' in window && header){ new ResizeObserver(apply).observe(header); } else { setTimeout(apply, 300); }
 })();
 
+/* Search max width calculation */
 function updateSearchMax(){
   if (!els.brandRow || !els.brandBox || !els.header) return;
   const rowW = els.brandRow.getBoundingClientRect().width;
@@ -124,7 +126,7 @@ window.addEventListener('orientationchange', updateSearchMax);
   updateSearchMax();
 })();
 
-/* ---------- Data + rendering ---------- */
+/* ---------- Data ---------- */
 const state = {
   all: [], filtered: [],
   sortKey: 'title', view: 'scroll',
@@ -222,6 +224,7 @@ async function resolveCovers(records,concurrency=6){
   }); await Promise.all(workers);
 }
 
+/* ---------- Rendering ---------- */
 function createCard(rec){
   const tpl=els.cardTpl?.content?.firstElementChild;
   const node=tpl?tpl.cloneNode(true):document.createElement('article');
@@ -255,12 +258,9 @@ function createCard(rec){
   if(rec.cover){ const real=new Image(); real.referrerPolicy='no-referrer';
     real.onload=()=>{ imgEl.src=rec.cover; }; real.onerror=()=>{}; real.src=rec.cover; }
 
-  // Tap = flip + light circle pulse
   node.addEventListener('click',()=>{
     node.classList.toggle('flipped');
-    if (sleeve){
-      sleeve.classList.remove('pulse'); void sleeve.offsetWidth; sleeve.classList.add('pulse');
-    }
+    if (sleeve){ sleeve.classList.remove('pulse'); void sleeve.offsetWidth; sleeve.classList.add('pulse'); }
   });
 
   return node;
@@ -334,19 +334,19 @@ els.sort.addEventListener('change',()=>{ state.sortKey=els.sort.value||'title'; 
 els.shuffle.addEventListener('click',()=>{
   for(let i=state.filtered.length-1;i>0;i--){
     const j=Math.floor(Math.random()*(i+1));
-    [state.filtered[i], state.filtered[j]] = [state.filtered[j]], [state.filtered[i]];
+    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]]; // fixed swap
   }
   render();
 });
 
-/* View toggles + arrows */
+/* Arrows */
 els.viewScrollBtn.addEventListener('click',()=>{ state.view='scroll'; render(); });
 els.viewGridBtn.addEventListener('click',()=>{ state.view='grid'; render(); });
 function toggleArrows(show){ els.prev.style.display=show?'':'none'; els.next.style.display=show?'':'none'; }
 els.prev.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() - 1); });
 els.next.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() + 1); });
 
-/* Stats */
+/* Stats — totals + chips */
 function buildStats(recs){
   const total=recs.length, artistMap=new Map(), genreMap=new Map();
   for(const r of recs){
@@ -361,18 +361,43 @@ function buildStats(recs){
   };
 }
 function openStats(){
-  const s=buildStats(state.filtered); const body=els.statsBody; body.innerHTML='';
+  const s=buildStats(state.filtered);
+  const body=els.statsBody; body.innerHTML='';
+
+  // Totals grid
   const grid=document.createElement('div'); grid.className='stat-grid';
   grid.innerHTML=`
     <div class="stat-tile"><div>Total Albums</div><div class="stat-big">${s.total}</div></div>
     <div class="stat-tile"><div>Unique Artists</div><div class="stat-big">${s.uniqArtists}</div></div>
-    <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${s.topGenres.length}</div></div>`;
+    <div class="stat-tile"><div>Total Genres</div><div class="stat-big">${s.topGenres.length}</div></div>
+  `;
   body.appendChild(grid);
+
+  // Top Artists chips
+  if (s.topArtists.length){
+    const h=document.createElement('h3'); h.textContent='Top Artists'; body.appendChild(h);
+    const chips=document.createElement('div'); chips.className='chips';
+    s.topArtists.forEach(([name,n])=>{
+      const c=document.createElement('span'); c.className='chip'; c.textContent=`${name} • ${n}`; chips.appendChild(c);
+    });
+    body.appendChild(chips);
+  }
+
+  // Top Genres chips
+  if (s.topGenres.length){
+    const h=document.createElement('h3'); h.textContent='Top Genres'; body.appendChild(h);
+    const chips=document.createElement('div'); chips.className='chips';
+    s.topGenres.forEach(([g,n])=>{
+      const c=document.createElement('span'); c.className='chip'; c.textContent=`${g} • ${n}`; chips.appendChild(c);
+    });
+    body.appendChild(chips);
+  }
+
   els.statsModal.showModal();
 }
 els.statsBtn.addEventListener('click',openStats);
 
-/* UPC lookup + save */
+/* UPC lookup + save (unchanged) */
 async function lookupByUPC(upc){
   const url=`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r=await fetch(url,{ headers:{ 'Accept':'application/json' }});
@@ -393,11 +418,8 @@ async function lookupByUPC(upc){
   const artist=(rel['artist-credit']||[]).map(c=>c?.name||c?.artist?.name).filter(Boolean).join(', ') || (rel['artist-credit-phrase']||'');
 
   let coverUrl = "";
-  if (rel['cover-art-archive']?.front) {
-    coverUrl = `https://coverartarchive.org/release/${mbid}/front-500`;
-  } else if (rel['release-group']?.id) {
-    coverUrl = `https://coverartarchive.org/release-group/${rel['release-group'].id}/front-500`;
-  }
+  if (rel['cover-art-archive']?.front) coverUrl = `https://coverartarchive.org/release/${mbid}/front-500`;
+  else if (rel['release-group']?.id) coverUrl = `https://coverartarchive.org/release-group/${rel['release-group'].id}/front-500`;
 
   return { title, artist, upc, coverRaw: coverUrl || "", altRaw:"", notes:"", genre:"" };
 }
@@ -422,7 +444,7 @@ async function addToCollection(rec){
   await addRecordToSheet(rec);
 }
 
-/* Scanning engines (unchanged) */
+/* Scanner */
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
@@ -536,6 +558,7 @@ async function stopScanEngines(){
   state.usingZXing = false;
 }
 
+/* Scan modal open/close + UPC handling */
 async function openScanModal(){
   els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
   els.scanModal.showModal(); document.body.classList.add('modal-open');
@@ -604,11 +627,10 @@ els.refresh?.addEventListener('click', async ()=>{
   finally { els.refresh.disabled = false; els.refresh.textContent = originalText; }
 });
 
-/* FAB behavior */
+/* FAB */
 els.fab.addEventListener('click', ()=> { els.fabMenu.showModal(); });
 els.fabScan.addEventListener('click', async ()=>{
-  els.fabMenu.close();
-  await openScanModal();
+  els.fabMenu.close(); await openScanModal();
 });
 els.fabEnter.addEventListener('click', ()=>{
   els.fabMenu.close();
