@@ -1,7 +1,6 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   - Card-by-card arrow nav (no drift)
-   - FAB with action sheet + manual UPC modal
+   (Scan modal: no "Enter manually" button; Save label shortened)
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -34,7 +33,6 @@ const els = {
   scanModal: $('#scanModal'),
   scanVideo: $('#scanVideo'),
   scanHint: $('#scanHint'),
-  manualUPC: $('#manualUPC'),
   closeScan: $('#closeScan'),
   scanStatus: $('#scanStatus'),
   scanForm: $('#scanForm'),
@@ -76,7 +74,7 @@ const state = {
 
 const withBust = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
 
-// 3) CSV PARSER + helpers (unchanged)
+// 3) CSV parser/helpers (unchanged from prior)
 function parseCSV(text){
   const rows=[]; let cur=['']; let i=0,inQ=false;
   for(; i<text.length; i++){
@@ -129,7 +127,7 @@ function placeholderFor(a,b){
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-// 4) LOAD & NORMALIZE
+// 4) Load & normalize
 async function loadFromSheet(forceFresh=false){
   const url = forceFresh ? withBust(SHEET_CSV) : SHEET_CSV;
   const res = await fetch(url, { cache:"no-store" });
@@ -165,7 +163,7 @@ async function resolveCovers(records,concurrency=6){
   }); await Promise.all(workers);
 }
 
-// 5) RENDER
+// 5) Render
 function createCard(rec){
   const tpl=els.cardTpl?.content?.firstElementChild;
   const node=tpl?tpl.cloneNode(true):document.createElement('article');
@@ -213,7 +211,7 @@ function centerFirstCardIfMobile(){
   });
 }
 
-/* Arrow nav: index-based (no drift) */
+/* Arrow nav */
 const cardsList = () => Array.from(els.scroller.querySelectorAll('.card'));
 function currentCenteredIndex(){
   const cards = cardsList();
@@ -237,7 +235,6 @@ function scrollToIndex(idx){
   const left = card.offsetLeft + card.offsetWidth/2 - els.scroller.clientWidth/2;
   els.scroller.scrollTo({ left: Math.max(0, Math.round(left)), behavior: 'smooth' });
 }
-
 function renderScroll(){
   els.scroller.innerHTML = '';
   state.filtered.forEach(r => els.scroller.appendChild(createCard(r)));
@@ -255,11 +252,10 @@ function render(){
   els.viewGridBtn.classList.toggle('active',!isScroll);
   if(isScroll){ renderScroll(); toggleArrows(true); } else { renderGrid(); toggleArrows(false); }
 }
-
 window.addEventListener('resize', centerFirstCardIfMobile);
 window.addEventListener('orientationchange', centerFirstCardIfMobile);
 
-// 6) SEARCH / SORT / SHUFFLE
+// 6) Search / Sort / Shuffle
 function applySort(){
   const k=state.sortKey;
   state.filtered.sort((a,b)=> (a[k]||"").toLowerCase().localeCompare((b[k]||"").toLowerCase()));
@@ -278,16 +274,16 @@ els.shuffle.addEventListener('click',()=>{
   render();
 });
 
-// 7) VIEW TOGGLES
+// 7) View toggles
 els.viewScrollBtn.addEventListener('click',()=>{ state.view='scroll'; render(); });
 els.viewGridBtn.addEventListener('click',()=>{ state.view='grid'; render(); });
 
-// 8) ARROWS
+// 8) Arrows
 function toggleArrows(show){ els.prev.style.display=show?'':'none'; els.next.style.display=show?'':'none'; }
 els.prev.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() - 1); });
 els.next.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() + 1); });
 
-// 9) STATS
+// 9) Stats
 function buildStats(recs){
   const total=recs.length, artistMap=new Map(), genreMap=new Map();
   for(const r of recs){
@@ -323,7 +319,7 @@ function openStats(){
 }
 els.statsBtn.addEventListener('click',openStats);
 
-// 10) UPC LOOKUP + Save
+// 10) UPC lookup + Save
 async function lookupByUPC(upc){
   const url=`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r=await fetch(url,{ headers:{ 'Accept':'application/json' }});
@@ -373,7 +369,7 @@ async function addToCollection(rec){
   await addRecordToSheet(rec);
 }
 
-// 11) Scan engines (same behavior as before)
+// 11) Scan engines
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
@@ -496,15 +492,10 @@ async function openScanModal(){
 }
 function closeScanModal(){ stopScanEngines(); els.scanModal.close(); document.body.classList.remove('modal-open'); }
 els.closeScan?.addEventListener('click',closeScanModal);
-els.manualUPC.addEventListener('click',async ()=>{
-  const upc=prompt("Enter UPC (numbers only):")||""; const trimmed=upc.replace(/\D+/g,'').trim();
-  if(!trimmed){ els.scanStatus.textContent='No UPC entered.'; return; }
-  await stopScanEngines(); await handleUPC(trimmed);
-});
 
 // 13) After-detect flow
 async function handleUPC(upc){
-  if (!els.scanModal.open) { await openScanModal(); } // ensure modal visible for status/form
+  if (!els.scanModal.open) { await openScanModal(); }
   await stopScanEngines();
   els.scanStatus.textContent=`UPC: ${upc} — looking up…`;
   try{
@@ -548,7 +539,7 @@ els.scanForm.addEventListener('submit', async (e)=>{
   }catch(err){
     els.scanStatus.textContent = "Saved locally. " + err.message;
   } finally {
-    els.saveRecord.textContent = prevLabel || 'Save to Sheet';
+    els.saveRecord.textContent = prevLabel || 'Save';
     els.saveRecord.disabled = false;
   }
 });
