@@ -5,14 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vinyl Collection</title>
 
-  <!-- Icons (use your provided files) -->
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
   <link rel="manifest" href="/manifest.webmanifest">
-
   <meta name="theme-color" content="#0f1319" />
 
-  <!-- Fonts & CSS -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -29,7 +26,7 @@
       <input id="search" type="search" placeholder="Search" autocomplete="off" />
 
       <div class="btn-row">
-        <!-- NEW: Scan button before View: Scroll -->
+        <!-- Scan first -->
         <button id="scanBtn" class="btn">Scan UPC</button>
 
         <div class="segmented" role="tablist" aria-label="View toggle">
@@ -44,7 +41,6 @@
 
         <button id="shuffle" class="btn">Shuffle</button>
 
-        <!-- Styled like a button (no underline) -->
         <a id="sheetLink" class="btn"
            href="https://docs.google.com/spreadsheets/d/1wNsjoZ5UcucOrTUokWfETyx_C5xMKtwWZ7LeDjdi6sI/edit?usp=sharing"
            target="_blank" rel="noopener">Google Sheet</a>
@@ -85,7 +81,7 @@
     </div>
   </dialog>
 
-  <!-- NEW: Scan modal -->
+  <!-- Scan modal (camera auto-starts) -->
   <dialog id="scanModal">
     <div class="scan-card">
       <div class="scan-head">
@@ -101,8 +97,7 @@
         </div>
 
         <div class="scan-actions">
-          <button class="btn" id="startScan">Start Camera</button>
-          <button class="btn" id="stopScan">Stop</button>
+          <!-- Removed Stop. Keep manual entry. -->
           <button class="btn" id="manualUPC">Enter UPC Manually</button>
         </div>
       </div>
@@ -134,7 +129,6 @@
     </article>
   </template>
 
-  <!-- No PapaParse, no Service Worker -->
   <script src="/app.js"></script>
 </body>
 </html>
