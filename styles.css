@@ -44,7 +44,7 @@ body.modal-open{overflow:hidden}
 }
 #search::placeholder{color:var(--muted)}
 
-/* Buttons row: horizontal scroll on mobile */
+/* Buttons row */
 .btn-row{
   margin-top:12px;display:flex;flex-wrap:nowrap;gap:10px;align-items:center;
   overflow-x:auto; -webkit-overflow-scrolling: touch; padding-bottom:6px;
@@ -70,7 +70,7 @@ select.btn{appearance:none}
 .seg-btn{background:transparent;border:none;padding:8px 12px;border-radius:10px;white-space:nowrap}
 .seg-btn.active{background:#1a2434;border:1px solid #233047}
 
-/* Layout (content below fixed header) */
+/* Layout */
 main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .view{display:none}
 .view.active{display:block}
@@ -137,7 +137,7 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,20
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{background:#142549;border:1px solid #20335d;color:#cfe2ff;padding:6px 10px;border-radius:999px;font-weight:800}
 
-/* Scan modal (kept from previous step) */
+/* Scan modal (unchanged visuals) */
 dialog#scanModal{border:none;padding:0;background:transparent}
 dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,.55)}
 .scan-card{
@@ -154,78 +154,66 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,
   padding:12px clamp(12px, 2vw, 18px) 8px;
 }
 .scan-actions{display:flex;gap:8px;flex-wrap:nowrap}
-.video-wrap{
-  position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0a0f18;flex:0 0 auto;
-}
-.video-wrap video{
-  display:block;width:100%;
-  max-height:46dvh;
-  aspect-ratio: 4 / 3; object-fit:cover; background:#000;
-}
+.video-wrap{position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0a0f18;flex:0 0 auto}
+.video-wrap video{display:block;width:100%;max-height:46dvh;aspect-ratio: 4 / 3; object-fit:cover;background:#000}
 .scan-overlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
 .scan-frame{
-  position:relative;
-  width:min(82vw, 460px);
-  height:min(36dvh, 320px);
-  border:2px solid rgba(255,255,255,.85);
-  border-radius:12px;
-  box-shadow: 0 0 0 9999px rgba(0,0,0,.35) inset;
+  position:relative;width:min(82vw, 460px);height:min(36dvh, 320px);
+  border:2px solid rgba(255,255,255,.85);border-radius:12px;box-shadow: 0 0 0 9999px rgba(0,0,0,.35) inset;
 }
 .scan-frame::after{
   content:""; position:absolute; left:10%; right:10%; height:2px; top:10%;
-  background:rgba(255,255,255,.9); border-radius:2px;
-  animation:sweep 2.2s ease-in-out infinite;
+  background:rgba(255,255,255,.9); border-radius:2px; animation:sweep 2.2s ease-in-out infinite;
 }
-@keyframes sweep{
-  0%{ top:10% } 50%{ top:calc(100% - 10%) } 100%{ top:10% }
-}
-.scan-hint{ position:absolute;left:12px;bottom:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px; backdrop-filter: blur(3px); }
+@keyframes sweep{ 0%{top:10%} 50%{top:calc(100% - 10%)} 100%{top:10%} }
+.scan-hint{ position:absolute;left:12px;bottom:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;backdrop-filter: blur(3px) }
 .scan-status{margin-top:6px;color:#cfe2ff}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px;padding:0 clamp(12px,2vw,18px) 12px}
 .form-grid label{display:grid;gap:6px}
 .form-grid label.wide{grid-column:1 / -1}
-.form-grid input,.form-grid textarea{
-  width:100%; padding:12px 14px; border-radius:10px;
-  border:1px solid var(--border); background:#101827; color:#fff; font-size:16px;
-}
+.form-grid input,.form-grid textarea{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#101827;color:#fff;font-size:16px}
 .form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px}
-.form-actions.sticky{ position:sticky; bottom:0; z-index:1; padding:10px 0; background:linear-gradient(180deg, rgba(17,23,34,0), rgba(17,23,34,1) 40%); margin-top:8px; }
+.form-actions.sticky{position:sticky;bottom:0;z-index:1;padding:10px 0;background:linear-gradient(180deg, rgba(17,23,34,0), rgba(17,23,34,1) 40%);margin-top:8px}
 
-/* MOBILE POLISH */
+/* === MOBILE POLISH (iPhone 17 Pro Max included) === */
 @media (max-width: 720px){
   .btn-row{justify-content:flex-start}
   main{padding: calc(var(--header-h) + 10px) 12px 20px}
 
-  /* Center a single card in scroll view */
+  /* Center the single card precisely within the content width (not 100vw) */
   .scroller{
-    /* set a reusable mobile card width */
-    --card-w: 86vw;
+    --card-w: 86vw;                /* base width of a card on phones */
     grid-auto-columns: var(--card-w);
-    padding:14px 0 26px;                /* remove side padding so we can center cleanly */
+    padding:14px 0 26px;           /* remove side pad; main already has it */
     gap:16px;
     scroll-snap-type:x mandatory;
   }
-  /* phantom spacers to center the first/last card */
+  /* spacers use container width (100%), not 100vw, so it's perfectly centered inside main */
   .scroller::before,
-  .scroller::after{ content:""; display:block; width:calc((100vw - var(--card-w))/2); }
+  .scroller::after{ content:""; display:block; width:calc((100% - var(--card-w))/2); }
 
-  /* snap cards to the center on phones */
+  /* snap to center on phones */
   .card{ scroll-snap-align: center; }
 
-  /* nudge arrows inward and size them a bit smaller so nothing clips */
+  /* arrows respect safe areas and tuck in slightly */
   .nav-arrow{ width:42px; height:42px; }
-  .nav-arrow.left{ left:6px }
-  .nav-arrow.right{ right:6px }
+  .nav-arrow.left{ left: max(6px, env(safe-area-inset-left, 0px) + 6px); }
+  .nav-arrow.right{ right: max(6px, env(safe-area-inset-right, 0px) + 6px); }
 
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 
   dialog#scanModal{padding:0}
   .scan-card{
-    width:100vw; max-width:none;
+    width:100svw; max-width:none;             /* small viewport width to avoid iOS bounce */
     height:100dvh; max-height:none;
     border-radius:16px 16px 0 0;
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .scan-frame{width:86vw; height:min(34dvh, 300px)}
   .scan-hint{font-size:14px}
+}
+
+/* Slightly larger phones (Pro/Max) can use a bit wider card */
+@media (min-width: 430px) and (max-width: 720px){
+  .scroller{ --card-w: 88vw; }
 }
