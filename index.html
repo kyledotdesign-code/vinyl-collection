@@ -81,7 +81,7 @@
     </div>
   </dialog>
 
-  <!-- Scan modal (camera auto-starts) -->
+  <!-- Scan modal (camera auto-starts; confirm with form) -->
   <dialog id="scanModal">
     <div class="scan-card">
       <div class="scan-head">
@@ -92,14 +92,42 @@
       <div class="scan-body">
         <div class="scan-video-wrap">
           <video id="scanVideo" playsinline muted></video>
-          <canvas id="scanCanvas" class="hidden"></canvas>
           <div class="scan-hint" id="scanHint">Point your camera at the barcode.</div>
         </div>
 
         <div class="scan-actions">
-          <!-- Removed Stop. Keep manual entry. -->
           <button class="btn" id="manualUPC">Enter UPC Manually</button>
         </div>
+
+        <!-- New: confirmation form (fills after lookup; user reviews/edits, then saves) -->
+        <form id="scanForm" class="scan-form">
+          <div class="form-grid">
+            <div class="form-item">
+              <label for="formUPC">UPC</label>
+              <input id="formUPC" name="upc" type="text" placeholder="Scan or enter UPC" readonly />
+            </div>
+            <div class="form-item">
+              <label for="formArtist">Artist</label>
+              <input id="formArtist" name="artist" type="text" placeholder="Artist" />
+            </div>
+            <div class="form-item">
+              <label for="formTitle">Title</label>
+              <input id="formTitle" name="title" type="text" placeholder="Title" />
+            </div>
+            <div class="form-item">
+              <label for="formGenre">Genre</label>
+              <input id="formGenre" name="genre" type="text" placeholder="Genre (optional)" />
+            </div>
+            <div class="form-item form-notes">
+              <label for="formNotes">Notes</label>
+              <textarea id="formNotes" name="notes" rows="3" placeholder="Notes (optional)"></textarea>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn primary" id="saveRecord" disabled>Save to Sheet</button>
+          </div>
+        </form>
       </div>
 
       <div class="scan-footer" id="scanStatus"></div>
