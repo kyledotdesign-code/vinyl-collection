@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Added viewport-fit=cover to respect iOS safe areas -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Vinyl Collection</title>
 
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -26,7 +27,7 @@
       <input id="search" type="search" placeholder="Search" autocomplete="off" />
 
       <div class="btn-row">
-        <!-- Renamed from “Scan UPC” to “Scan” -->
+        <!-- Renamed to Scan -->
         <button id="scanBtn" class="btn">Scan</button>
 
         <div class="segmented" role="tablist" aria-label="View toggle">
@@ -82,11 +83,10 @@
     </div>
   </dialog>
 
-  <!-- Scan modal (cosmetic/mobile polish) -->
+  <!-- Scan modal (mobile-polished) -->
   <dialog id="scanModal">
-    <div class="scan-card">
+    <div class="scan-card" role="dialog" aria-label="Scan">
       <div class="scan-head">
-        <!-- Renamed heading -->
         <h2>Scan</h2>
         <div class="scan-actions">
           <button id="manualUPC" class="btn small" type="button">Enter UPC manually</button>
@@ -96,23 +96,29 @@
 
       <div class="video-wrap">
         <video id="scanVideo" playsinline muted></video>
+
+        <!-- Subtle scan frame overlay (pure CSS, no logic) -->
+        <div class="scan-overlay" aria-hidden="true">
+          <div class="scan-frame"></div>
+        </div>
+
         <div class="scan-hint" id="scanHint">Starting camera…</div>
       </div>
 
       <div id="scanStatus" class="scan-status"></div>
 
-      <form id="scanForm" class="form-grid">
+      <form id="scanForm" class="form-grid" novalidate>
         <label>
           <span>Artist</span>
-          <input id="formArtist" type="text" autocomplete="off" />
+          <input id="formArtist" type="text" autocomplete="off" autocapitalize="words" />
         </label>
         <label>
           <span>Title</span>
-          <input id="formTitle" type="text" autocomplete="off" />
+          <input id="formTitle" type="text" autocomplete="off" autocapitalize="words" />
         </label>
         <label>
           <span>Genre</span>
-          <input id="formGenre" type="text" autocomplete="off" />
+          <input id="formGenre" type="text" autocomplete="off" autocapitalize="words" />
         </label>
         <label class="wide">
           <span>Notes</span>
@@ -123,13 +129,15 @@
           <input id="formUPC" type="text" inputmode="numeric" autocomplete="off" />
         </label>
 
-        <div class="form-actions">
+        <!-- Sticky bottom action on mobile -->
+        <div class="form-actions sticky">
           <button id="saveRecord" class="btn" type="submit" disabled>Save to Sheet</button>
         </div>
       </form>
     </div>
   </dialog>
 
+  <!-- Card template -->
   <template id="cardTpl">
     <article class="card" role="listitem">
       <div class="sleeve" aria-live="polite">
