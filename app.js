@@ -1,6 +1,6 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   Auto-start UPC scan; form-POST to Apps Script with CORS-friendly fallback
+   Fixes cover fetching + keeps form-POST to Apps Script
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -47,7 +47,6 @@ const state = {
   filtered: [],
   sortKey: 'title',
   view: 'scroll',
-  // Scan
   mediaStream: null,
   scanning: false,
   rafId: null,
@@ -109,10 +108,11 @@ function pickField(row, keys){
 }
 
 // 5) ARTWORK HELPERS
-function looksLikeImage(u){ return /\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(u||""); }
 function wsrv(url){
   return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
+
+// Wikipedia page → lead image URL
 async function fromWikipediaPage(pageUrl){
   const m = pageUrl.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i);
   if(!m) return "";
@@ -124,19 +124,29 @@ async function fromWikipediaPage(pageUrl){
     return j?.originalimage?.source || j?.thumbnail?.source || "";
   }catch{ return ""; }
 }
+
+// Treat ANY http(s) candidate as an image (proxy through wsrv),
+// but still special-case Wikipedia page URLs.
 async function chooseCover(coverRaw, altRaw){
   const candidate = coverRaw || altRaw || "";
   if (!candidate) return "";
 
-  if (looksLikeImage(candidate)){
-    return wsrv(candidate);
-  }
+  // Wikipedia page (HTML) → resolve to image first
   if (/wikipedia\.org\/wiki\//i.test(candidate)){
     const img = await fromWikipediaPage(candidate);
     return img ? wsrv(img) : "";
   }
+
+  // If it's any http(s) URL (e.g., Cover Art Archive /front w/o extension), try it via proxy.
+  if (/^https?:\/\//i.test(candidate)){
+    return wsrv(candidate);
+  }
+
+  // Otherwise nothing we can do
   return "";
 }
+
+// Placeholder SVG
 function placeholderFor(textA, textB){
   const letter = (textB || textA || "?").trim().charAt(0).toUpperCase() || "?";
   const bg = "#1b2330";
@@ -236,15 +246,15 @@ function createCard(rec){
   cTitle.textContent   = title;
   cArtist.textContent  = artist;
 
-  const ph = placeholderFor(title, artist);
-  imgEl.src = ph;
+  // placeholder, then swap
+  imgEl.src = placeholderFor(title, artist);
   imgEl.alt = `${title} — ${artist}`;
 
   if (rec.cover){
     const real = new Image();
     real.referrerPolicy = 'no-referrer';
     real.onload = () => { imgEl.src = rec.cover; };
-    real.onerror = () => {};
+    real.onerror = () => {}; // keep placeholder on fail
     real.src = rec.cover;
   }
 
@@ -400,6 +410,7 @@ async function lookupByUPC(upc){
       const front = (art.images||[]).find(img=>img.front) || art.images?.[0];
       coverUrl = front?.image || "";
     } else {
+      // Even if this returns a 302 to an image without extension, our wsrv proxy will handle it.
       coverUrl = `https://coverartarchive.org/release/${mbid}/front`;
     }
   }catch{ /* ignore */ }
@@ -413,9 +424,8 @@ async function lookupByUPC(upc){
   };
 }
 
-// 13) ADD TO GOOGLE SHEET (Apps Script) — CORS-friendly
+// 13) ADD TO GOOGLE SHEET (Apps Script) — form-encoded (no preflight)
 async function addRecordToSheet(rec){
-  // Send as form-encoded to avoid preflight
   const form = new URLSearchParams({
     title: rec.title || "",
     artist: rec.artist || "",
@@ -431,11 +441,9 @@ async function addRecordToSheet(rec){
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
       body: form.toString(),
-      // mode: 'cors' (default) — will succeed if your script returns ACAO header
     });
 
-    // If server doesn't send CORS headers, browsers may still deliver an "opaque" response in some contexts.
-    // Try reading; if it fails, we still treat as sent.
+    // Try to read JSON; if not possible (opaque), we still treat it as sent
     let json = {};
     try { json = await resp.clone().json(); } catch {}
     if (!resp.ok && resp.type !== 'opaque') {
@@ -443,17 +451,12 @@ async function addRecordToSheet(rec){
     }
     return json;
   } catch (e) {
-    // Fire-and-forget fallback when strict CORS blocks reads
+    // Strict CORS fallback: fire-and-forget
     try {
-      await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: form, // URLSearchParams is fine
-      });
-      // We can't read the response in no-cors, but the request was sent.
+      await fetch(APPS_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: form });
       return { opaque: true };
     } catch (e2) {
-      throw e; // surface the original error
+      throw e;
     }
   }
 }
@@ -469,16 +472,19 @@ async function addToCollection(rec){
   render();
 
   try{
-    await addRecordToSheet(rec);
-    // optional: re-sync sheet
+    const res = await addRecordToSheet(rec);
+    // Optional: re-sync from sheet if you want absolute source of truth
     // await loadFromSheet();
+
+    // Show a tiny confirmation in console for debugging
+    console.log('Apps Script response:', res);
   }catch(e){
     console.error(e);
     alert("Saved locally, but failed to add to sheet:\n" + e.message);
   }
 }
 
-// 15) SCANNER (auto-start)
+// 15) SCANNER (auto-start when opening modal)
 async function startCamera(){
   const constraints = {
     video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
