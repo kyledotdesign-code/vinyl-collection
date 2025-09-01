@@ -8,7 +8,8 @@
   --accent-2: #90e9b3;
   --border: #1c232e;
   --shadow: 0 10px 30px rgba(0,0,0,.25);
-  --header-h: 140px; /* set dynamically in JS, fallback here */
+
+  --header-h: 140px; /* updated by JS */
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -21,8 +22,10 @@ body{
   color:var(--fg);
   -webkit-tap-highlight-color: transparent;
 }
+/* prevent background scroll when dialog is open */
+body.modal-open{overflow:hidden}
 
-/* Fixed header (never disappears) */
+/* Fixed header */
 .site-header{
   position:fixed; top:0; left:0; right:0; z-index:1000;
   backdrop-filter: blur(10px);
@@ -135,21 +138,21 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,20
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{background:#142549;border:1px solid #20335d;color:#cfe2ff;padding:6px 10px;border-radius:999px;font-weight:800}
 
-/* Scan modal — mobile polish */
+/* Scan modal */
 dialog#scanModal{border:none;padding:0;background:transparent}
 dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,.55)}
 .scan-card{
-  max-width:860px;width:min(94vw,860px);
-  /* Important for mobile: let the card itself scroll, keep header pinned */
-  max-height:min(94vh, 820px);
+  width:min(94vw, 860px);
+  max-height:min(94vh, 860px);
   border:none;border-radius:16px;background:#111722;color:var(--fg);box-shadow:var(--shadow);
   display:flex;flex-direction:column;gap:12px;overflow:auto;
+  overscroll-behavior: contain;
 }
 .scan-head{
   position:sticky; top:0; z-index:2;
   display:flex;align-items:center;justify-content:space-between;gap:10px;
-  background:linear-gradient(180deg, #111722 90%, rgba(17,23,34,0));
-  padding-top:8px;
+  background:linear-gradient(180deg, #111722 92%, rgba(17,23,34,0));
+  padding:12px clamp(12px, 2vw, 18px) 8px;
 }
 .scan-actions{display:flex;gap:8px;flex-wrap:nowrap}
 .video-wrap{
@@ -157,28 +160,53 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,
 }
 .video-wrap video{
   display:block;width:100%;
-  /* Keep video from getting silly tall on phones */
-  max-height:46dvh; aspect-ratio: 4 / 3;
-  object-fit:cover; background:#000;
+  max-height:46dvh; /* keep reasonable height on phones */
+  aspect-ratio: 4 / 3; object-fit:cover; background:#000;
+}
+/* Scan frame overlay */
+.scan-overlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.scan-frame{
+  position:relative;
+  width:min(82vw, 460px);
+  height:min(36dvh, 320px);
+  border:2px solid rgba(255,255,255,.85);
+  border-radius:12px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.35) inset;
+}
+.scan-frame::after{
+  content:""; position:absolute; left:10%; right:10%; height:2px; top:10%;
+  background:rgba(255,255,255,.9); border-radius:2px;
+  animation:sweep 2.2s ease-in-out infinite;
+}
+@keyframes sweep{
+  0%{ top:10% }
+  50%{ top:calc(100% - 10%) }
+  100%{ top:10% }
 }
 .scan-hint{
-  position:absolute;left:12px;bottom:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px
+  position:absolute;left:12px;bottom:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;
+  backdrop-filter: blur(3px);
 }
-.scan-status{margin-top:2px;color:#cfe2ff}
+.scan-status{margin-top:6px;color:#cfe2ff}
 
-/* Prevent iOS auto-zoom on inputs by keeping ≥16px */
-.form-grid input,.form-grid textarea{font-size:16px}
-
-.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px}
+/* Form */
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px;padding:0 clamp(12px,2vw,18px) 12px}
 .form-grid label{display:grid;gap:6px}
 .form-grid label.wide{grid-column:1 / -1}
 .form-grid input,.form-grid textarea{
-  width:100%; padding:10px 12px; border-radius:10px;
+  width:100%; padding:12px 14px; border-radius:10px;
   border:1px solid var(--border); background:#101827; color:var(--fg);
+  font-size:16px; /* prevent iOS zoom */
 }
 .form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px}
+.form-actions.sticky{
+  position:sticky; bottom:0; z-index:1;
+  padding:10px 0;
+  background:linear-gradient(180deg, rgba(17,23,34,0), rgba(17,23,34,1) 40%);
+  margin-top:8px;
+}
 
-/* Mobile tweaks */
+/* Mobile full-screen bottom-sheet feel */
 @media (max-width: 720px){
   .btn-row{justify-content:flex-start}
   main{padding: calc(var(--header-h) + 10px) 12px 20px}
@@ -186,10 +214,13 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
   .form-grid{grid-template-columns:1fr}
 
-  /* Make scan modal feel like a bottom sheet */
+  dialog#scanModal{padding:0}
   .scan-card{
     width:100vw; max-width:none;
-    height: calc(100dvh - env(safe-area-inset-top, 0px) - 20px);
-    max-height:none; border-radius:16px 16px 0 0;
+    height:100dvh; max-height:none;
+    border-radius:16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+  .scan-frame{width:86vw; height:min(34dvh, 300px)}
+  .scan-hint{font-size:14px}
 }
