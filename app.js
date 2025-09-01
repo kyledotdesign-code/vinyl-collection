@@ -1,7 +1,7 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
    - Scan modal: scan → autofill form → user submits to save
-   - Adds strict confirmation: only "Saved!" if server confirms JSON
+   - "Update Collection" button: clear local state & reload from Sheet
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -10,7 +10,7 @@ const SHEET_CSV =
 
 // IMPORTANT: update with your current Web App URL after deploying server.gs
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbwmcZPZbg3-Cfev8OTt_YGIsrTZ3Lb_BZ2xQ5bRxh9Hpy9OvkYkOqeubtl1MQ4OGqZAJw/exec";
+  "https://script.google.com/macros/s/AKfycbwpf5emXEyiy-vTaq7bnZzOzC7TxFSy53XqO9mId1wTSze0m-KLxyrbnWRT0xohwK4TRg/exec";
 
 // 1) ELEMENTS
 const $ = (s, r = document) => r.querySelector(s);
@@ -21,6 +21,7 @@ const els = {
   viewGridBtn: $('#view-grid'),
   sort: $('#sort'),
   shuffle: $('#shuffle'),
+  refresh: $('#refresh'),        // NEW
   statsBtn: $('#statsBtn'),
   scroller: $('#scroller'),
   grid: $('#grid'),
@@ -117,7 +118,7 @@ function placeholderFor(a,b){
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-// 6) LOAD & NORMALIZE
+// 6) LOAD & NORMALIZE (source of truth = Google Sheet)
 async function loadFromSheet(){
   const res = await fetch(SHEET_CSV, { cache:"no-store" }); const text = await res.text();
   if(!text || text.trim().startsWith("<")){ console.error("Not CSV"); return; }
@@ -137,6 +138,7 @@ async function loadFromSheet(){
   state.all=recs; state.filtered=[...recs]; applySort(); render();
   await resolveCovers(recs,6); render();
 }
+
 async function resolveCovers(records,concurrency=6){
   let i=0; const workers=Array.from({length:concurrency},async()=>{
     while(i<records.length){ const idx=i++; const r=records[idx];
@@ -207,6 +209,39 @@ els.shuffle.addEventListener('click',()=>{
   render();
 });
 
+// NEW: Update button — reload from Sheet & clear local state
+els.refresh.addEventListener('click', async ()=>{
+  // If scan modal is open, close & stop camera
+  if (els.scanModal?.open) closeScanModal();
+
+  // Clear UI inputs
+  els.search.value = '';
+  state.pending = null;
+  els.scanForm?.reset?.();
+  if (els.formUPC) els.formUPC.value = '';
+  if (els.saveRecord) els.saveRecord.disabled = true;
+  els.scanStatus.textContent = '';
+
+  // Clear local optimistic items and re-fetch from Sheet
+  const originalText = els.refresh.textContent;
+  els.refresh.disabled = true;
+  els.refresh.textContent = 'Updating…';
+
+  try {
+    state.all = [];
+    state.filtered = [];
+    render(); // optional quick clear
+    // Keep current sort/view, just reload collection from CSV
+    await loadFromSheet();
+  } catch (err) {
+    console.error(err);
+    alert('Update failed. Check your published CSV link.');
+  } finally {
+    els.refresh.disabled = false;
+    els.refresh.textContent = originalText;
+  }
+});
+
 // 9) VIEW TOGGLES
 els.viewScrollBtn.addEventListener('click',()=>{ state.view='scroll'; render(); });
 els.viewGridBtn.addEventListener('click',()=>{ state.view='grid'; render(); });
@@ -274,7 +309,7 @@ async function lookupByUPC(upc){
   return { title, artist, upc, coverRaw: coverUrl||"", altRaw:"", notes:"", genre:"" };
 }
 
-// 13) ADD TO GOOGLE SHEET — strict confirmation (no silent no-cors)
+// 13) ADD TO GOOGLE SHEET — strict confirmation
 async function addRecordToSheet(rec){
   const form=new URLSearchParams({
     title:rec.title||"", artist:rec.artist||"", upc:rec.upc||"",
@@ -286,7 +321,6 @@ async function addRecordToSheet(rec){
     headers:{ 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' },
     body: form.toString()
   });
-  // We require JSON so we can confirm the write.
   const json = await resp.json().catch(()=>null);
   if(!json || !json.ok){ throw new Error(json?.error || `Server did not confirm (status ${resp.status})`); }
   return json;
@@ -296,7 +330,7 @@ async function addRecordToSheet(rec){
 async function addToCollection(rec){
   rec.cover = await chooseCover(rec.coverRaw, rec.altRaw);
   state.all.unshift(rec); state.filtered=[...state.all]; applySort(); render();
-  return await addRecordToSheet(rec); // return server JSON so caller can show where it was saved
+  return await addRecordToSheet(rec);
 }
 
 // 15) SCANNER FLOW
@@ -363,7 +397,7 @@ els.manualUPC.addEventListener('click',async ()=>{
   await handleUPC(trimmed);
 });
 
-// Submit form → save to sheet (with explicit confirmation)
+// Submit form → save to sheet
 els.scanForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const upc=(els.formUPC.value||"").trim();
@@ -382,12 +416,11 @@ els.scanForm.addEventListener('submit', async (e)=>{
   els.saveRecord.disabled=true; els.scanStatus.textContent="Saving…";
   try{
     const server = await addToCollection(rec);
-    els.scanStatus.textContent = `Saved to "${server.sheet}" (row ${server.row}) • id: ${server.spreadsheetId}`;
+    els.scanStatus.textContent = `Saved to "${server.sheet}" (row ${server.row})`;
     setTimeout(()=> closeScanModal(), 900);
   }catch(err){
     console.error(err);
     els.scanStatus.textContent = "Saved locally, but server didn’t confirm. Check Web App URL & access.";
-    // leave modal open so you can read the message
   } finally {
     els.saveRecord.disabled=false;
   }
