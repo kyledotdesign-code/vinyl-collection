@@ -259,10 +259,7 @@ function createCard(rec){
   node.addEventListener('click',()=>{
     node.classList.toggle('flipped');
     if (sleeve){
-      sleeve.classList.remove('pulse'); // restart animation if tapped fast
-      // force reflow
-      void sleeve.offsetWidth;
-      sleeve.classList.add('pulse');
+      sleeve.classList.remove('pulse'); void sleeve.offsetWidth; sleeve.classList.add('pulse');
     }
   });
 
@@ -337,7 +334,7 @@ els.sort.addEventListener('change',()=>{ state.sortKey=els.sort.value||'title'; 
 els.shuffle.addEventListener('click',()=>{
   for(let i=state.filtered.length-1;i>0;i--){
     const j=Math.floor(Math.random()*(i+1));
-    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
+    [state.filtered[i], state.filtered[j]] = [state.filtered[j]], [state.filtered[i]];
   }
   render();
 });
@@ -349,7 +346,7 @@ function toggleArrows(show){ els.prev.style.display=show?'':'none'; els.next.sty
 els.prev.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() - 1); });
 els.next.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() + 1); });
 
-/* Stats (same logic as before, shortened here) */
+/* Stats */
 function buildStats(recs){
   const total=recs.length, artistMap=new Map(), genreMap=new Map();
   for(const r of recs){
@@ -425,7 +422,7 @@ async function addToCollection(rec){
   await addRecordToSheet(rec);
 }
 
-/* Scanning engines */
+/* Scanning engines (unchanged) */
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
