@@ -1,6 +1,7 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   Fixes cover fetching + keeps form-POST to Apps Script
+   - Header stays sticky (handled by CSS)
+   - Scan modal: scan → autofill form → user submits to save
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -9,7 +10,7 @@ const SHEET_CSV =
 
 // Your Google Apps Script Web App URL
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbwmcZPZbg3-Cfev8OTt_YGIsrTZ3Lb_BZ2xQ5bRxh9Hpy9OvkYkOqeubtl1MQ4OGqZAJw/exec";
+  "https://script.google.com/macros/s/AKfycbwpf5emXEyiy-vTaq7bnZzOzC7TxFSy53XqO9mId1wTSze0m-KLxyrbnWRT0xohwK4TRg/exec";
 
 // 1) ELEMENTS
 const $ = (s, r = document) => r.querySelector(s);
@@ -34,11 +35,18 @@ const els = {
   scanBtn: $('#scanBtn'),
   scanModal: $('#scanModal'),
   scanVideo: $('#scanVideo'),
-  scanCanvas: $('#scanCanvas'),
   scanHint: $('#scanHint'),
   manualUPC: $('#manualUPC'),
   closeScan: $('#closeScan'),
   scanStatus: $('#scanStatus'),
+  // Form fields
+  scanForm: $('#scanForm'),
+  formUPC: $('#formUPC'),
+  formArtist: $('#formArtist'),
+  formTitle: $('#formTitle'),
+  formGenre: $('#formGenre'),
+  formNotes: $('#formNotes'),
+  saveRecord: $('#saveRecord'),
 };
 
 // 2) STATE
@@ -47,11 +55,13 @@ const state = {
   filtered: [],
   sortKey: 'title',
   view: 'scroll',
+  // Scan
   mediaStream: null,
   scanning: false,
   rafId: null,
   detectorSupported: 'BarcodeDetector' in window,
   detector: null,
+  pending: null, // pending record from last UPC lookup
 };
 
 // 3) CSV PARSER
@@ -111,8 +121,6 @@ function pickField(row, keys){
 function wsrv(url){
   return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
 }
-
-// Wikipedia page → lead image URL
 async function fromWikipediaPage(pageUrl){
   const m = pageUrl.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i);
   if(!m) return "";
@@ -124,29 +132,19 @@ async function fromWikipediaPage(pageUrl){
     return j?.originalimage?.source || j?.thumbnail?.source || "";
   }catch{ return ""; }
 }
-
-// Treat ANY http(s) candidate as an image (proxy through wsrv),
-// but still special-case Wikipedia page URLs.
 async function chooseCover(coverRaw, altRaw){
   const candidate = coverRaw || altRaw || "";
   if (!candidate) return "";
 
-  // Wikipedia page (HTML) → resolve to image first
   if (/wikipedia\.org\/wiki\//i.test(candidate)){
     const img = await fromWikipediaPage(candidate);
     return img ? wsrv(img) : "";
   }
-
-  // If it's any http(s) URL (e.g., Cover Art Archive /front w/o extension), try it via proxy.
   if (/^https?:\/\//i.test(candidate)){
     return wsrv(candidate);
   }
-
-  // Otherwise nothing we can do
   return "";
 }
-
-// Placeholder SVG
 function placeholderFor(textA, textB){
   const letter = (textB || textA || "?").trim().charAt(0).toUpperCase() || "?";
   const bg = "#1b2330";
@@ -246,7 +244,6 @@ function createCard(rec){
   cTitle.textContent   = title;
   cArtist.textContent  = artist;
 
-  // placeholder, then swap
   imgEl.src = placeholderFor(title, artist);
   imgEl.alt = `${title} — ${artist}`;
 
@@ -254,7 +251,7 @@ function createCard(rec){
     const real = new Image();
     real.referrerPolicy = 'no-referrer';
     real.onload = () => { imgEl.src = rec.cover; };
-    real.onerror = () => {}; // keep placeholder on fail
+    real.onerror = () => {};
     real.src = rec.cover;
   }
 
@@ -410,7 +407,6 @@ async function lookupByUPC(upc){
       const front = (art.images||[]).find(img=>img.front) || art.images?.[0];
       coverUrl = front?.image || "";
     } else {
-      // Even if this returns a 302 to an image without extension, our wsrv proxy will handle it.
       coverUrl = `https://coverartarchive.org/release/${mbid}/front`;
     }
   }catch{ /* ignore */ }
@@ -442,16 +438,11 @@ async function addRecordToSheet(rec){
       headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
       body: form.toString(),
     });
-
-    // Try to read JSON; if not possible (opaque), we still treat it as sent
     let json = {};
     try { json = await resp.clone().json(); } catch {}
-    if (!resp.ok && resp.type !== 'opaque') {
-      throw new Error(`Apps Script error (${resp.status})`);
-    }
+    if (!resp.ok && resp.type !== 'opaque') throw new Error(`Apps Script error (${resp.status})`);
     return json;
   } catch (e) {
-    // Strict CORS fallback: fire-and-forget
     try {
       await fetch(APPS_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: form });
       return { opaque: true };
@@ -465,7 +456,6 @@ async function addRecordToSheet(rec){
 async function addToCollection(rec){
   rec.cover = await chooseCover(rec.coverRaw, rec.altRaw);
 
-  // Optimistic UI
   state.all.unshift(rec);
   state.filtered = [...state.all];
   applySort();
@@ -473,10 +463,6 @@ async function addToCollection(rec){
 
   try{
     const res = await addRecordToSheet(rec);
-    // Optional: re-sync from sheet if you want absolute source of truth
-    // await loadFromSheet();
-
-    // Show a tiny confirmation in console for debugging
     console.log('Apps Script response:', res);
   }catch(e){
     console.error(e);
@@ -484,7 +470,7 @@ async function addToCollection(rec){
   }
 }
 
-// 15) SCANNER (auto-start when opening modal)
+// 15) SCANNER FLOW (auto-start; fill form; require submit)
 async function startCamera(){
   const constraints = {
     video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -519,24 +505,47 @@ async function scanLoop(){
   state.rafId = requestAnimationFrame(scanLoop);
 }
 async function handleUPC(upc){
+  // stop scanning once we have a UPC; populate form; wait for user submit
   state.scanning = false;
   if (state.rafId) cancelAnimationFrame(state.rafId);
   stopCamera();
-  els.scanStatus.textContent = `Found UPC: ${upc}. Looking up…`;
 
+  els.scanStatus.textContent = `UPC: ${upc} — looking up…`;
   try{
     const rec = await lookupByUPC(upc);
-    els.scanStatus.textContent = `Found: ${rec.artist} — ${rec.title}. Adding…`;
-    await addToCollection(rec);
-    els.scanStatus.textContent = `Added to your collection (sent to Sheet).`;
-    setTimeout(()=> els.scanModal.close(), 600);
+    state.pending = rec;
+
+    // Fill form fields
+    els.formUPC.value = rec.upc || upc;
+    els.formArtist.value = rec.artist || "";
+    els.formTitle.value = rec.title || "";
+    els.formGenre.value = rec.genre || "";
+    els.formNotes.value = ""; // user can add notes
+
+    els.scanStatus.textContent = `Found: ${rec.artist || '(unknown)'} — ${rec.title || '(unknown)'} • review & Save`;
+    els.saveRecord.disabled = false;
+    els.formArtist.focus();
   }catch(e){
     console.error(e);
-    els.scanStatus.textContent = `Couldn’t find that UPC automatically. You can enter details manually.`;
+    state.pending = { upc, title: "", artist: "", genre: "", notes: "", coverRaw: "", altRaw: "" };
+    els.formUPC.value = upc;
+    els.formArtist.value = "";
+    els.formTitle.value = "";
+    els.formGenre.value = "";
+    els.formNotes.value = "";
+    els.saveRecord.disabled = false; // allow manual entry save
+    els.scanStatus.textContent = `No match found. Enter details and Save.`;
+    els.formArtist.focus();
   }
 }
 async function openScanModal(){
   els.scanStatus.textContent = '';
+  // reset form
+  state.pending = null;
+  els.scanForm.reset();
+  els.formUPC.value = "";
+  els.saveRecord.disabled = true;
+
   els.scanModal.showModal();
 
   try{
@@ -554,7 +563,6 @@ async function openScanModal(){
     els.scanHint.textContent = state.detectorSupported
       ? 'Point your camera at the barcode.'
       : 'Camera started, but live scan not supported. Use “Enter UPC manually.”';
-
     if (state.scanning) scanLoop();
   }catch(e){
     console.error(e);
@@ -571,6 +579,7 @@ function closeScanModal(){
 // Events
 els.scanBtn.addEventListener('click', openScanModal);
 els.closeScan?.addEventListener('click', closeScanModal);
+
 els.manualUPC.addEventListener('click', async ()=>{
   const upc = prompt("Enter UPC (numbers only):") || "";
   const trimmed = upc.replace(/\D+/g,'').trim();
@@ -579,6 +588,45 @@ els.manualUPC.addEventListener('click', async ()=>{
     return;
   }
   await handleUPC(trimmed);
+});
+
+// Submit form → save to sheet
+els.scanForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+
+  const upc = (els.formUPC.value || "").trim();
+  const artist = (els.formArtist.value || "").trim();
+  const title = (els.formTitle.value || "").trim();
+  const genre = (els.formGenre.value || "").trim();
+  const notes = (els.formNotes.value || "").trim();
+
+  if (!upc){
+    alert("UPC is required (scan or enter manually).");
+    return;
+  }
+  if (!artist && !title){
+    alert("Please enter at least a Title or Artist.");
+    return;
+  }
+
+  // Base on pending (to keep coverRaw if we looked it up)
+  const rec = Object.assign(
+    { upc, artist, title, genre, notes, coverRaw: "", altRaw: "" },
+    state.pending ? { coverRaw: state.pending.coverRaw || "" } : {}
+  );
+
+  els.saveRecord.disabled = true;
+  els.scanStatus.textContent = "Saving…";
+
+  try{
+    await addToCollection(rec);
+    els.scanStatus.textContent = "Saved!";
+    setTimeout(()=> closeScanModal(), 500);
+  }catch(err){
+    console.error(err);
+    els.scanStatus.textContent = "Saved locally, but failed to add to sheet.";
+    setTimeout(()=> closeScanModal(), 800);
+  }
 });
 
 // 16) KICKOFF
