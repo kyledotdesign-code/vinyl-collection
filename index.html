@@ -5,18 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Vinyl Collection</title>
 
-  <!-- IMPORTANT: relative paths for GitHub Pages -->
+  <!-- GitHub Pages: relative paths -->
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <link rel="manifest" href="manifest.webmanifest">
-
-  <meta name="theme-color" content="#000000" />
+  <meta name="theme-color" content="#0b0e13" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <!-- cache-bust query so updates show up -->
-  <link rel="stylesheet" href="styles.css?v=pages1">
+  <link rel="stylesheet" href="styles.css?v=pages2">
 </head>
 <body>
   <header class="site-header">
@@ -132,12 +130,13 @@
   <!-- FAB menu -->
   <dialog id="fabMenu">
     <div class="sheet">
-      <h3>Add Vinyl</h3>
+      <h3 class="sheet-title">Add <span>Vinyl</span></h3>
       <div class="sheet-actions">
         <button id="fabScan" class="btn wide">Scan UPC</button>
-        <button id="fabEnter" class="btn wide">Enter UPC Code</button>
+        <!-- Make this white/inverted -->
+        <button id="fabEnter" class="btn wide invert">Enter UPC Code</button>
       </div>
-      <form method="dialog"><button class="btn small subtle">Close</button></form>
+      <form method="dialog"><button class="btn small subtle sheet-close">Close</button></form>
     </div>
   </dialog>
 
@@ -176,7 +175,6 @@
     </article>
   </template>
 
-  <!-- IMPORTANT: relative path + cache-bust -->
-  <script src="app.js?v=pages1"></script>
+  <script src="app.js?v=pages2"></script>
 </body>
 </html>
