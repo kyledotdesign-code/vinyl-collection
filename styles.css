@@ -13,6 +13,9 @@
   --header-h: 140px;
   --side-pad: clamp(12px, 3vw, 18px);
   --search-max: 640px;
+
+  /* NEW: shared gutter for mobile sheet edges */
+  --sheet-gutter: clamp(12px, 4vw, 22px);
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -154,9 +157,7 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
   opacity:0; transform: scale(.9);
   pointer-events:none; transition: opacity .25s ease, transform .25s ease;
 }
-.sleeve.pulse::after{
-  animation: vinylPulse .6s ease-out forwards;
-}
+.sleeve.pulse::after{ animation: vinylPulse .6s ease-out forwards; }
 @keyframes vinylPulse{
   0%{ opacity:.25; transform: scale(.9); }
   60%{ opacity:.12; transform: scale(1.02); }
@@ -199,7 +200,7 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.
 .stats-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .stats-body{display:grid;gap:14px}
 
-/* Scan modal — robust mobile bottom sheet, no right/bottom clip */
+/* Scan modal (desktop / tablet default) */
 dialog#scanModal{border:none; padding:0; background:transparent; inset:0;}
 dialog#scanModal[open]{display:flex; align-items:center; justify-content:center;}
 dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.55)}
@@ -321,15 +322,16 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 
-  /* Make scan modal a full-width bottom sheet */
+  /* Make scan modal a full-width bottom sheet with matching gutters */
   dialog#scanModal[open]{ align-items:flex-end; }
   .scan-card{
-    border-radius:16px 16px 0 0;
-    width: 100vw;
-    max-width: none;
-    margin: 0;
-    padding: 14px clamp(12px,4vw,22px) calc(18px + env(safe-area-inset-bottom,0px));
-    max-height: calc(100svh - 12px - env(safe-area-inset-top,0px));
+    border-radius:16px;
+    /* same gutter on left/right & bottom, safe-area aware */
+    width: calc(100vw - var(--sheet-gutter) - var(--sheet-gutter)
+                 - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));
+    margin: 0 var(--sheet-gutter) calc(var(--sheet-gutter) + env(safe-area-inset-bottom,0px));
+    padding: 14px var(--sheet-gutter) calc(18px + env(safe-area-inset-bottom,0px));
+    max-height: calc(100svh - var(--sheet-gutter) - env(safe-area-inset-top,0px));
   }
   .scan-frame{height:min(32svh, 280px)}
   .scan-hint{font-size:14px}
