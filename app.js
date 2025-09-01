@@ -1,18 +1,16 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   - Scan modal: scan → autofill form → user submits to save
-   - "Update Collection" button: clear local state & reload from Sheet
-   - Mobile-friendly scanning: ZXing fallback for iOS/Android
-   - Detailed server error reporting
+   - Scan modal (ZXing fallback) → form → Save to Sheet
+   - "Update Collection" = HARD RESYNC from Google Sheet (purges strays)
    - Success message: "Saved"
-   - More reliable cover fetching on add (Cover Art Archive front-500 URLs)
+   - Reliable cover fetching (Cover Art Archive front-500 URLs)
 --------------------------------------------*/
 
 // 0) CONFIG
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
 
-// IMPORTANT: paste your *current* Web App URL (/exec) here
+// Use your provided Apps Script URL
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbwmcZPZbg3-Cfev8OTt_YGIsrTZ3Lb_BZ2xQ5bRxh9Hpy9OvkYkOqeubtl1MQ4OGqZAJw/exec";
 
@@ -73,6 +71,9 @@ const state = {
   pending: null,
 };
 
+// Helper to bust Google "Publish to web" cache when we REALLY want fresh
+const withBust = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
+
 // 3) CSV PARSER
 function parseCSV(text){
   const rows=[]; let cur=['']; let i=0,inQ=false;
@@ -131,10 +132,13 @@ function placeholderFor(a,b){
 }
 
 // 6) LOAD & NORMALIZE (source of truth = Google Sheet)
-async function loadFromSheet(){
-  const res = await fetch(SHEET_CSV, { cache:"no-store" }); const text = await res.text();
+async function loadFromSheet(forceFresh=false){
+  const url = forceFresh ? withBust(SHEET_CSV) : SHEET_CSV;
+  const res = await fetch(url, { cache:"no-store" });
+  const text = await res.text();
   if(!text || text.trim().startsWith("<")){ console.error("Not CSV"); return; }
   const { data } = parseCSV(text);
+
   const recs=[];
   for(const row of data){
     const title=pickField(row,HEADER_ALIASES.title);
@@ -147,9 +151,16 @@ async function loadFromSheet(){
     if(!title && !artist) continue;
     recs.push({ title,artist,notes,genre,coverRaw,altRaw,upc,cover:"" });
   }
-  state.all=recs; state.filtered=[...recs]; applySort(); render();
-  await resolveCovers(recs,6); render();
+
+  // HARD REPLACE: whatever is in the sheet becomes truth
+  state.all = recs;
+  state.filtered = [...recs];
+  applySort(); render();
+
+  await resolveCovers(recs,6);
+  render();
 }
+
 async function resolveCovers(records,concurrency=6){
   let i=0; const workers=Array.from({length:concurrency},async()=>{
     while(i<records.length){ const idx=i++; const r=records[idx];
@@ -223,29 +234,6 @@ els.shuffle.addEventListener('click',()=>{
   render();
 });
 
-// NEW: Update button — reload from Sheet & clear local state
-els.refresh?.addEventListener('click', async ()=>{
-  if (els.scanModal?.open) closeScanModal();
-  els.search.value = '';
-  state.pending = null;
-  els.scanForm?.reset?.();
-  if (els.formUPC) els.formUPC.value = '';
-  if (els.saveRecord) els.saveRecord.disabled = true;
-  els.scanStatus.textContent = '';
-
-  const originalText = els.refresh.textContent;
-  els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
-  try {
-    state.all = []; state.filtered = []; render();
-    await loadFromSheet();
-  } catch (err) {
-    console.error(err);
-    alert('Update failed. Check your published CSV link.');
-  } finally {
-    els.refresh.disabled = false; els.refresh.textContent = originalText;
-  }
-});
-
 // 9) VIEW TOGGLES
 els.viewScrollBtn.addEventListener('click',()=>{ state.view='scroll'; render(); });
 els.viewGridBtn.addEventListener('click',()=>{ state.view='grid'; render(); });
@@ -300,7 +288,6 @@ async function lookupByUPC(upc){
   const j=await r.json(); const releases=j?.releases||[];
   if(!releases.length) throw new Error('No releases found for that UPC');
 
-  // Prefer a release that *claims* to have front cover art
   releases.sort((a,b)=>{
     const af = a['cover-art-archive']?.front ? 1 : 0;
     const bf = b['cover-art-archive']?.front ? 1 : 0;
@@ -313,8 +300,6 @@ async function lookupByUPC(upc){
   const title=rel.title||'';
   const artist=(rel['artist-credit']||[]).map(c=>c?.name||c?.artist?.name).filter(Boolean).join(', ') || (rel['artist-credit-phrase']||'');
 
-  // Build a direct Cover Art Archive URL without fetching JSON (more reliable CORS-wise)
-  // Try release front, then release-group front
   let coverUrl = "";
   if (rel['cover-art-archive']?.front) {
     coverUrl = `https://coverartarchive.org/release/${mbid}/front-500`;
@@ -350,13 +335,16 @@ async function addRecordToSheet(rec){
   return json;
 }
 
-// 14) OPTIMISTIC ADD + CONFIRM
+// 14) ADD + CONFIRM (optimistic UI), success message simplified
 async function addToCollection(rec){
-  // Resolve a displayable cover immediately (wsrv proxy for speed/caching)
+  // Render immediately with best cover we have
   rec.cover = await chooseCover(rec.coverRaw, rec.altRaw);
-  state.all.unshift(rec); state.filtered=[...state.all]; applySort(); render();
-  // Then persist to the sheet
-  return await addRecordToSheet(rec);
+  state.all.unshift(rec);
+  state.filtered=[...state.all];
+  applySort(); render();
+
+  // Persist to Sheet
+  await addRecordToSheet(rec);
 }
 
 // 15) SCANNING — mobile-friendly (ZXing fallback)
@@ -543,7 +531,7 @@ async function handleUPC(upc){
   }
 }
 
-// 18) Submit form → save to sheet (button shows "Saving..." and success shows "Saved")
+// 18) Submit form → save to sheet ("Saving..." label, success shows "Saved")
 els.scanForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const upc=(els.formUPC.value||"").trim();
@@ -577,7 +565,38 @@ els.scanForm.addEventListener('submit', async (e)=>{
   }
 });
 
-// 19) KICKOFF
+// 19) UPDATE COLLECTION (hard resync, removes strays)
+els.refresh?.addEventListener('click', async ()=>{
+  if (els.scanModal?.open) closeScanModal();
+
+  // Clear any local-only state
+  els.search.value = '';
+  state.pending = null;
+  els.scanForm?.reset?.();
+  if (els.formUPC) els.formUPC.value = '';
+  if (els.saveRecord) els.saveRecord.disabled = true;
+  els.scanStatus.textContent = '';
+
+  // Show progress
+  const originalText = els.refresh.textContent;
+  els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
+
+  try {
+    // Replace the in-memory list with EXACTLY what's in the sheet
+    state.all = [];
+    state.filtered = [];
+    render();
+
+    await loadFromSheet(true); // forceFresh with cache-bust — purges strays reliably
+  } catch (err) {
+    console.error(err);
+    alert('Update failed. Check your published CSV link.');
+  } finally {
+    els.refresh.disabled = false; els.refresh.textContent = originalText;
+  }
+});
+
+// 20) KICKOFF
 loadFromSheet().catch(err=>{
   console.error(err);
   alert("Couldn’t load the Google Sheet. Make sure your link is published as CSV (output=csv).");
