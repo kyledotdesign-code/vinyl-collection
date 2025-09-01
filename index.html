@@ -8,7 +8,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#0f1319" />
+  <meta name="theme-color" content="#000000" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,17 +17,30 @@
 </head>
 <body>
   <header class="site-header">
-    <div class="brand">
-      <span class="logo">🎵</span>
-      <h1>Vinyl Collection</h1>
+    <div class="brand-row">
+      <div class="brand">
+        <span class="logo">🎵</span>
+        <h1>Vinyl Collection</h1>
+      </div>
+
+      <!-- Search icon that expands -->
+      <div class="search-inline">
+        <button id="searchToggle" class="icon-btn" aria-label="Search" aria-expanded="false">
+          <!-- magnifier -->
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"></circle>
+            <path d="M20 20L16.65 16.65" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+          </svg>
+        </button>
+        <input id="search" class="search-input" type="search" placeholder="Search albums, artists, notes…" autocomplete="off" />
+        <button id="searchClose" class="icon-btn close" aria-label="Close search" title="Close">
+          &times;
+        </button>
+      </div>
     </div>
 
     <div class="controls">
-      <input id="search" type="search" placeholder="Search" autocomplete="off" />
-
       <div class="btn-row">
-        <!-- (FAB replaces the top Scan button) -->
-
         <div class="segmented" role="tablist" aria-label="View toggle">
           <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
           <button id="view-grid"   class="seg-btn"         role="tab" aria-selected="false">View: Grid</button>
@@ -85,7 +98,6 @@
       <div class="scan-head">
         <h2>Scan</h2>
         <div class="scan-actions">
-          <!-- removed "Enter UPC manually" button here -->
           <form method="dialog"><button id="closeScan" class="btn small" type="submit">Close</button></form>
         </div>
       </div>
