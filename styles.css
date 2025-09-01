@@ -5,8 +5,8 @@
   --fg: #f4f5f6;
   --muted: #a7aab2;
   --card: #101010;
-  --accent: #9fd1ff;      /* cool subtle blue */
-  --accent-2: #7ee2b4;    /* mint accent for genre */
+  --accent: #9fd1ff;
+  --accent-2: #7ee2b4;
   --border: #1b1b1b;
   --shadow: 0 12px 34px rgba(0,0,0,.5);
 
@@ -184,35 +184,43 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .card.flipped .front{transform:rotateY(180deg)}
 .card.flipped .back{transform:rotateY(0deg)}
 
-/* --- SUBTLE VINYL CIRCLE ON BACK FACE --- */
+/* === Vinyl back face with VERY subtle circle === */
 .back{
   transform:rotateY(180deg);
-  display:grid; place-items:center; background:#0f0f0f;
-  position:relative; /* enable pseudo layering */
+  display:grid; place-items:center;
+  background:#0f0f0f;
+  position:relative; /* enable ::before layering */
 }
 .back::before{
-  /* gentle “vinyl” halo: single circle + faint grooves; fades in only when flipped */
   content:"";
-  position:absolute; top:50%; left:50%;
-  width: min(78%, 520px); aspect-ratio: 1 / 1; border-radius:50%;
-  transform: translate(-50%,-50%) scale(.94);
+  position:absolute; inset:0; margin:auto;
+  width:78%; aspect-ratio:1/1; border-radius:50%;
+  pointer-events:none; z-index:0;
+  /* soft center glow + ultra-light grooves */
   background:
-    radial-gradient(closest-side, rgba(255,255,255,.025) 0%, rgba(255,255,255,0) 70%),
-    repeating-radial-gradient(circle at center,
-      rgba(255,255,255,.035) 0 1px,
-      rgba(255,255,255,0) 1px 4px);
-  filter: saturate(80%);
-  opacity: 0;
-  transition: opacity .28s ease, transform .35s cubic-bezier(.2,.7,.2,1);
-  pointer-events:none;
+    radial-gradient(circle at 50% 50%,
+      rgba(255,255,255,0.055) 0%,
+      rgba(255,255,255,0.03) 42%,
+      rgba(0,0,0,0) 62%),
+    repeating-radial-gradient(circle at 50% 50%,
+      rgba(255,255,255,0.028) 0 1px,
+      rgba(0,0,0,0) 1px 4px);
+  filter: blur(0.2px);
+  opacity:0; /* hidden until flipped */
+  transition: opacity .35s ease;
 }
-.card.flipped .back::before{
-  opacity:.15;                 /* VERY subtle */
-  transform: translate(-50%,-50%) scale(1);
+.card.flipped .back::before{ opacity:.18 } /* VERY subtle */
+.back::after{
+  /* tiny center label/“spindle” hint */
+  content:"";
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:10px; height:10px; border-radius:50%;
+  background: radial-gradient(circle, rgba(255,255,255,.22), rgba(0,0,0,.1));
+  opacity:.18; pointer-events:none;
 }
-.back .meta{ position:relative; z-index:1 } /* ensure text stays above halo */
+.back .meta{ position:relative; z-index:1; }
 
-/* Meta + caption */
+.front .cover{width:100%;height:100%;object-fit:cover;display:block;background:#060606}
 .meta{padding:14px;text-align:center}
 .meta .title{font-size:16px;margin:0 0 6px}
 .meta .artist{margin:0;color:var(--muted)}
