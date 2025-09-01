@@ -2,7 +2,8 @@
    Vinyl Collection — app.js
    - Scan modal: scan → autofill form → user submits to save
    - "Update Collection" button: clear local state & reload from Sheet
-   - Better server error reporting
+   - Mobile-friendly scanning: ZXing fallback for iOS/Android
+   - Detailed server error reporting
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -57,8 +58,16 @@ const state = {
   filtered: [],
   sortKey: 'title',
   view: 'scroll',
-  mediaStream: null, scanning: false, rafId: null,
-  detectorSupported: 'BarcodeDetector' in window, detector: null,
+  // scanning engines
+  mediaStream: null,              // for BarcodeDetector path
+  scanning: false,
+  rafId: null,
+  detectorSupported: 'BarcodeDetector' in window,
+  detector: null,
+  usingZXing: false,
+  zxingReader: null,
+  zxingControls: null,
+  handlingUPC: false,
   pending: null,
 };
 
@@ -119,7 +128,7 @@ function placeholderFor(a,b){
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-// 6) LOAD & NORMALIZE
+// 6) LOAD & NORMALIZE (source of truth = Google Sheet)
 async function loadFromSheet(){
   const res = await fetch(SHEET_CSV, { cache:"no-store" }); const text = await res.text();
   if(!text || text.trim().startsWith("<")){ console.error("Not CSV"); return; }
@@ -207,7 +216,6 @@ els.sort.addEventListener('change',()=>{ state.sortKey=els.sort.value||'title'; 
 els.shuffle.addEventListener('click',()=>{
   for(let i=state.filtered.length-1;i>0;i--){
     const j=Math.floor(Math.random()*(i+1));
-    // FIXED: proper array swap (no stray bracket)
     [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
   }
   render();
@@ -335,30 +343,187 @@ async function addToCollection(rec){
   return await addRecordToSheet(rec);
 }
 
-// 15) SCANNER FLOW
-async function startCamera(){
+// 15) SCANNING — mobile-friendly (ZXing fallback)
+async function loadZXing(){
+  // Try ESM first, fallback to UMD global for older Safari
+  if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
+    return {
+      BrowserMultiFormatReader: window.ZXing.BrowserMultiFormatReader,
+      BarcodeFormat: window.ZXing.BarcodeFormat,
+      DecodeHintType: window.ZXing.DecodeHintType
+    };
+  }
+  try {
+    return await import('https://cdn.jsdelivr.net/npm/@zxing/library@0.21.2/esm/index.min.js');
+  } catch {
+    await new Promise((resolve, reject)=>{
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.2/umd/index.min.js';
+      s.onload=resolve; s.onerror=reject; document.head.appendChild(s);
+    });
+    return {
+      BrowserMultiFormatReader: window.ZXing.BrowserMultiFormatReader,
+      BarcodeFormat: window.ZXing.BarcodeFormat,
+      DecodeHintType: window.ZXing.DecodeHintType
+    };
+  }
+}
+
+async function startZXing(){
+  const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = await loadZXing();
+  const hints = new Map();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+    BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
+    BarcodeFormat.UPC_A,  BarcodeFormat.UPC_E,
+    BarcodeFormat.CODE_128, BarcodeFormat.CODE_39
+  ]);
+  const reader = new BrowserMultiFormatReader(hints);
+  state.zxingReader = reader;
+  state.usingZXing = true;
+
+  // Prefer back camera
+  const constraints = {
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1280 }, height: { ideal: 720 }
+    },
+    audio: false
+  };
+
+  return new Promise((resolve, reject)=>{
+    reader.decodeFromConstraints(constraints, els.scanVideo, async (result, err, controls)=>{
+      if (controls && !state.zxingControls) state.zxingControls = controls;
+
+      if (result && !state.handlingUPC) {
+        state.handlingUPC = true;
+        try {
+          await handleUPC(result.getText());
+        } finally {
+          resolve(); // we got a code; resolve the promise
+        }
+      } else if (err && !(err && err.name === 'NotFoundException')) {
+        // Real error (camera denied, etc.)
+        reject(err);
+      }
+    });
+  });
+}
+
+// BarcodeDetector path (desktop where supported)
+async function startBDCamera(){
   const constraints={ video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } }, audio:false };
   state.mediaStream=await navigator.mediaDevices.getUserMedia(constraints);
   els.scanVideo.srcObject=state.mediaStream; await els.scanVideo.play();
+
+  if(!state.detector){
+    try { state.detector=new window.BarcodeDetector({ formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39'] }); }
+    catch { state.detector=new window.BarcodeDetector(); }
+  }
+
+  state.scanning = true;
+  els.scanHint.textContent = 'Point your camera at the barcode.';
+  scanLoop();
 }
-function stopCamera(){
-  if(state.mediaStream){ for(const t of state.mediaStream.getTracks()){ t.stop(); } state.mediaStream=null; }
-  els.scanVideo.pause(); els.scanVideo.srcObject=null;
-}
+
 async function scanLoop(){
   if(!state.scanning) return;
   try{
     if(state.detector){
       const codes=await state.detector.detect(els.scanVideo);
-      if(codes && codes.length){ const upcRaw=(codes[0].rawValue||"").trim();
-        if(upcRaw){ await handleUPC(upcRaw); return; }
+      if(codes && codes.length){
+        const upcRaw=(codes[0].rawValue||"").trim();
+        if(upcRaw && !state.handlingUPC){
+          state.handlingUPC = true;
+          await handleUPC(upcRaw);
+          return;
+        }
       }
     }
   }catch(err){ console.error('scanLoop error',err); }
   state.rafId=requestAnimationFrame(scanLoop);
 }
+
+async function startScanEngine(){
+  state.handlingUPC = false;
+  // Mobile: prefer ZXing immediately; Desktop with BD: try BD first
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  try{
+    if (isMobile || !state.detectorSupported) {
+      els.scanHint.textContent = 'Scanning (ZXing)…';
+      await startZXing();
+    } else {
+      await startBDCamera();
+      // Safety: if BD doesn’t find anything soon, fall back to ZXing
+      setTimeout(async ()=>{
+        if (!state.handlingUPC && !state.usingZXing && els.scanModal.open) {
+          console.warn('Falling back to ZXing after BD warmup timeout.');
+          await stopScanEngines();
+          els.scanHint.textContent = 'Scanning (ZXing)…';
+          await startZXing();
+        }
+      }, 4000);
+    }
+  }catch(err){
+    console.error('Start scan error', err);
+    // Final fallback: try ZXing if BD path failed
+    if (!state.usingZXing) {
+      try {
+        els.scanHint.textContent = 'Scanning (ZXing)…';
+        await startZXing();
+      } catch (e2) {
+        console.error('ZXing also failed', e2);
+        els.scanStatus.textContent='Camera started, but live scan not available. Use “Enter UPC manually.”';
+      }
+    } else {
+      els.scanStatus.textContent='Live scan not available. Use “Enter UPC manually.”';
+    }
+  }
+}
+
+async function stopScanEngines(){
+  // Stop BD loop + camera
+  state.scanning=false;
+  if(state.rafId) cancelAnimationFrame(state.rafId);
+  if(state.mediaStream){ for(const t of state.mediaStream.getTracks()){ t.stop(); } state.mediaStream=null; }
+  els.scanVideo.pause(); els.scanVideo.srcObject=null;
+
+  // Stop ZXing controls
+  if (state.zxingControls) { try { state.zxingControls.stop(); } catch{} state.zxingControls = null; }
+  if (state.zxingReader) { try { state.zxingReader.reset(); } catch{} state.zxingReader = null; }
+  state.usingZXing = false;
+}
+
+// 16) OPEN/CLOSE MODAL
+async function openScanModal(){
+  els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
+  els.scanModal.showModal();
+  try{
+    els.scanHint.textContent='Starting camera…';
+    await startScanEngine();
+  }catch(e){
+    console.error(e);
+    els.scanStatus.textContent='Camera unavailable. Use “Enter UPC manually.”';
+  }
+}
+function closeScanModal(){
+  stopScanEngines(); els.scanModal.close();
+}
+
+// Events
+els.scanBtn.addEventListener('click',openScanModal);
+els.closeScan?.addEventListener('click',closeScanModal);
+els.manualUPC.addEventListener('click',async ()=>{
+  const upc=prompt("Enter UPC (numbers only):")||""; const trimmed=upc.replace(/\D+/g,'').trim();
+  if(!trimmed){ els.scanStatus.textContent='No UPC entered.'; return; }
+  // If user enters manually while engines running, stop them
+  await stopScanEngines();
+  await handleUPC(trimmed);
+});
+
+// 17) After-detect flow
 async function handleUPC(upc){
-  state.scanning=false; if(state.rafId) cancelAnimationFrame(state.rafId); stopCamera();
+  // Stop any scanning immediately so we don’t double-handle
+  await stopScanEngines();
   els.scanStatus.textContent=`UPC: ${upc} — looking up…`;
   try{
     const rec=await lookupByUPC(upc); state.pending=rec;
@@ -371,35 +536,12 @@ async function handleUPC(upc){
     state.pending={ upc, title:"", artist:"", genre:"", notes:"", coverRaw:"", altRaw:"" };
     els.formUPC.value=upc; els.formArtist.value=""; els.formTitle.value=""; els.formGenre.value=""; els.formNotes.value="";
     els.saveRecord.disabled=false; els.scanStatus.textContent=`No match found. Enter details and Save.`; els.formArtist.focus();
+  } finally {
+    state.handlingUPC = false; // allow rescans if user reopens
   }
 }
-async function openScanModal(){
-  els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
-  els.scanModal.showModal();
-  try{
-    if(state.detectorSupported && !state.detector){
-      try{ state.detector=new window.BarcodeDetector({ formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39'] }); }
-      catch{ state.detector=new window.BarcodeDetector(); }
-    }
-    await startCamera(); state.scanning=!!state.detectorSupported;
-    els.scanHint.textContent=state.detectorSupported?'Point your camera at the barcode.':'Camera started, but live scan not supported. Use “Enter UPC manually.”';
-    if(state.scanning) scanLoop();
-  }catch(e){ console.error(e); els.scanStatus.textContent='Camera unavailable. Use “Enter UPC manually.”'; }
-}
-function closeScanModal(){
-  state.scanning=false; if(state.rafId) cancelAnimationFrame(state.rafId); stopCamera(); els.scanModal.close();
-}
 
-// Events
-els.scanBtn.addEventListener('click',openScanModal);
-els.closeScan?.addEventListener('click',closeScanModal);
-els.manualUPC.addEventListener('click',async ()=>{
-  const upc=prompt("Enter UPC (numbers only):")||""; const trimmed=upc.replace(/\D+/g,'').trim();
-  if(!trimmed){ els.scanStatus.textContent='No UPC entered.'; return; }
-  await handleUPC(trimmed);
-});
-
-// Submit form → save to sheet
+// 18) Submit form → save to sheet
 els.scanForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const upc=(els.formUPC.value||"").trim();
@@ -428,7 +570,7 @@ els.scanForm.addEventListener('submit', async (e)=>{
   }
 });
 
-// 16) KICKOFF
+// 19) KICKOFF
 loadFromSheet().catch(err=>{
   console.error(err);
   alert("Couldn’t load the Google Sheet. Make sure your link is published as CSV (output=csv).");
