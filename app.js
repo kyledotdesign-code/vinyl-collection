@@ -4,6 +4,7 @@
    - "Update Collection" = HARD RESYNC from Google Sheet (purges strays)
    - Success message: "Saved"
    - Reliable cover fetching (Cover Art Archive front-500 URLs)
+   - NEW: Fixed header offset (mobile-safe) + minor mobile polish
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -51,6 +52,24 @@ const els = {
   formNotes: $('#formNotes'),
   saveRecord: $('#saveRecord'),
 };
+
+// 1a) Fixed header offset → keep content below the header on all devices
+(function setHeaderOffset(){
+  const header = document.querySelector('.site-header');
+  const apply = () => {
+    if (!header) return;
+    document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px');
+  };
+  // apply on load and when the header size might change
+  window.addEventListener('load', apply, { once:true });
+  window.addEventListener('resize', apply);
+  if ('ResizeObserver' in window && header){
+    new ResizeObserver(apply).observe(header);
+  } else {
+    // fallback periodic adjust (cheap)
+    setTimeout(apply, 300);
+  }
+})();
 
 // 2) STATE
 const state = {
@@ -582,12 +601,8 @@ els.refresh?.addEventListener('click', async ()=>{
   els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
 
   try {
-    // Replace the in-memory list with EXACTLY what's in the sheet
-    state.all = [];
-    state.filtered = [];
-    render();
-
-    await loadFromSheet(true); // forceFresh with cache-bust — purges strays reliably
+    state.all = []; state.filtered = []; render();
+    await loadFromSheet(true); // forceFresh + hard replace
   } catch (err) {
     console.error(err);
     alert('Update failed. Check your published CSV link.');
