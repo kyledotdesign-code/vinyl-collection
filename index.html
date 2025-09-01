@@ -26,7 +26,7 @@
       <input id="search" type="search" placeholder="Search" autocomplete="off" />
 
       <div class="btn-row">
-        <!-- Removed top Scan button (replaced by FAB) -->
+        <!-- (FAB replaces the top Scan button) -->
 
         <div class="segmented" role="tablist" aria-label="View toggle">
           <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
@@ -85,7 +85,7 @@
       <div class="scan-head">
         <h2>Scan</h2>
         <div class="scan-actions">
-          <button id="manualUPC" class="btn small" type="button">Enter UPC manually</button>
+          <!-- removed "Enter UPC manually" button here -->
           <form method="dialog"><button id="closeScan" class="btn small" type="submit">Close</button></form>
         </div>
       </div>
@@ -105,7 +105,7 @@
         <label class="wide"><span>Notes</span><textarea id="formNotes" rows="3"></textarea></label>
         <label><span>UPC</span><input id="formUPC" type="text" inputmode="numeric" autocomplete="off" /></label>
         <div class="form-actions sticky">
-          <button id="saveRecord" class="btn" type="submit" disabled>Save to Sheet</button>
+          <button id="saveRecord" class="btn" type="submit" disabled>Save</button>
         </div>
       </form>
     </div>
@@ -119,10 +119,10 @@
   <!-- FAB menu (action sheet) -->
   <dialog id="fabMenu">
     <div class="sheet">
-      <h3>Add a record</h3>
+      <h3>Add Vinyl</h3>
       <div class="sheet-actions">
         <button id="fabScan" class="btn wide">Scan UPC</button>
-        <button id="fabEnter" class="btn wide outline">Enter UPC Code</button>
+        <button id="fabEnter" class="btn wide">Enter UPC Code</button>
       </div>
       <form method="dialog"><button class="btn small subtle">Close</button></form>
     </div>
