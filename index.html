@@ -26,9 +26,10 @@
       <input id="search" type="search" placeholder="Search" autocomplete="off" />
 
       <div class="btn-row">
-        <!-- Scan first -->
+        <!-- Scan UPC first -->
         <button id="scanBtn" class="btn">Scan UPC</button>
 
+        <!-- View toggle -->
         <div class="segmented" role="tablist" aria-label="View toggle">
           <button id="view-scroll" class="seg-btn active" role="tab" aria-selected="true">View: Scroll</button>
           <button id="view-grid"   class="seg-btn"         role="tab" aria-selected="false">View: Grid</button>
@@ -40,7 +41,6 @@
         </select>
 
         <button id="shuffle" class="btn">Shuffle</button>
-        <!-- NEW: Update button -->
         <button id="refresh" class="btn">Update Collection</button>
 
         <a id="sheetLink" class="btn"
@@ -83,56 +83,50 @@
     </div>
   </dialog>
 
-  <!-- Scan modal (camera auto-starts; confirm with form) -->
+  <!-- Scan UPC modal -->
   <dialog id="scanModal">
     <div class="scan-card">
       <div class="scan-head">
         <h2>Scan UPC</h2>
-        <form method="dialog"><button class="btn small" id="closeScan">Close</button></form>
-      </div>
-
-      <div class="scan-body">
-        <div class="scan-video-wrap">
-          <video id="scanVideo" playsinline muted></video>
-          <div class="scan-hint" id="scanHint">Point your camera at the barcode.</div>
-        </div>
-
         <div class="scan-actions">
-          <button class="btn" id="manualUPC">Enter UPC Manually</button>
+          <button id="manualUPC" class="btn small" type="button">Enter UPC manually</button>
+          <form method="dialog"><button id="closeScan" class="btn small" type="submit">Close</button></form>
         </div>
-
-        <!-- Confirmation form -->
-        <form id="scanForm" class="scan-form">
-          <div class="form-grid">
-            <div class="form-item">
-              <label for="formUPC">UPC</label>
-              <input id="formUPC" name="upc" type="text" placeholder="Scan or enter UPC" readonly />
-            </div>
-            <div class="form-item">
-              <label for="formArtist">Artist</label>
-              <input id="formArtist" name="artist" type="text" placeholder="Artist" />
-            </div>
-            <div class="form-item">
-              <label for="formTitle">Title</label>
-              <input id="formTitle" name="title" type="text" placeholder="Title" />
-            </div>
-            <div class="form-item">
-              <label for="formGenre">Genre</label>
-              <input id="formGenre" name="genre" type="text" placeholder="Genre (optional)" />
-            </div>
-            <div class="form-item form-notes">
-              <label for="formNotes">Notes</label>
-              <textarea id="formNotes" name="notes" rows="3" placeholder="Notes (optional)"></textarea>
-            </div>
-          </div>
-
-          <div class="form-actions">
-            <button type="submit" class="btn primary" id="saveRecord" disabled>Save to Sheet</button>
-          </div>
-        </form>
       </div>
 
-      <div class="scan-footer" id="scanStatus"></div>
+      <div class="video-wrap">
+        <video id="scanVideo" playsinline muted></video>
+        <div class="scan-hint" id="scanHint">Starting camera…</div>
+      </div>
+
+      <div id="scanStatus" class="scan-status"></div>
+
+      <form id="scanForm" class="form-grid">
+        <label>
+          <span>Artist</span>
+          <input id="formArtist" type="text" autocomplete="off" />
+        </label>
+        <label>
+          <span>Title</span>
+          <input id="formTitle" type="text" autocomplete="off" />
+        </label>
+        <label>
+          <span>Genre</span>
+          <input id="formGenre" type="text" autocomplete="off" />
+        </label>
+        <label class="wide">
+          <span>Notes</span>
+          <textarea id="formNotes" rows="3"></textarea>
+        </label>
+        <label>
+          <span>UPC</span>
+          <input id="formUPC" type="text" inputmode="numeric" autocomplete="off" />
+        </label>
+
+        <div class="form-actions">
+          <button id="saveRecord" class="btn" type="submit" disabled>Save to Sheet</button>
+        </div>
+      </form>
     </div>
   </dialog>
 
