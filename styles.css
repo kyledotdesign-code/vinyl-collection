@@ -15,9 +15,9 @@ body{
 /* Header — fully sticky + opaque */
 .site-header{
   position:sticky; top:0; z-index:1000;
-  background: #0f1319; /* solid, no fade */
+  background:#0f1319;
   border-bottom:1px solid var(--border);
-  box-shadow: 0 6px 18px rgba(0,0,0,.35);
+  box-shadow:0 6px 18px rgba(0,0,0,.35);
   padding:14px clamp(12px,2vw,28px) 12px;
 }
 .brand{display:flex;align-items:center;gap:10px}
@@ -127,9 +127,7 @@ dialog#scanModal::backdrop{backdrop-filter: blur(4px); background: rgba(9,12,20,
   background:#0c1420; color:var(--fg); outline:none;
 }
 .scan-form input[readonly]{opacity:.75}
-.form-grid{
-  display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px;
-}
+.form-grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px}
 .form-item.form-notes{grid-column:1 / -1}
 .form-actions{margin-top:8px; display:flex; justify-content:flex-end}
 .scan-footer{font-size:13px;color:var(--muted)}
