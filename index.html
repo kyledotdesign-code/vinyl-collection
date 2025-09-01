@@ -5,15 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Vinyl Collection</title>
 
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="/icon-192.png" />
-  <link rel="manifest" href="/manifest.webmanifest">
+  <!-- IMPORTANT: relative paths for GitHub Pages -->
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="manifest" href="manifest.webmanifest">
+
   <meta name="theme-color" content="#000000" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css">
+  <!-- cache-bust query so updates show up -->
+  <link rel="stylesheet" href="styles.css?v=pages1">
 </head>
 <body>
   <header class="site-header">
@@ -23,19 +26,15 @@
         <h1>Vinyl Collection</h1>
       </div>
 
-      <!-- Search icon that expands; width capped so it never hits the title -->
       <div class="search-inline">
         <button id="searchToggle" class="icon-btn" aria-label="Search" aria-expanded="false">
-          <!-- magnifier -->
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"></circle>
             <path d="M20 20L16.65 16.65" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
           </svg>
         </button>
         <input id="search" class="search-input" type="search" placeholder="Search albums, artists, notes…" autocomplete="off" />
-        <button id="searchClose" class="icon-btn close" aria-label="Close search" title="Close">
-          &times;
-        </button>
+        <button id="searchClose" class="icon-btn close" aria-label="Close search" title="Close">&times;</button>
       </div>
     </div>
 
@@ -64,6 +63,7 @@
   </header>
 
   <main>
+    <!-- Scroll view -->
     <section id="scrollView" class="view view-scroll active" aria-label="Scroll view">
       <div id="scrollerWrap" class="scroller-wrap">
         <button id="scrollPrev" class="nav-arrow left" aria-label="Previous">
@@ -76,6 +76,7 @@
       </div>
     </section>
 
+    <!-- Grid view -->
     <section id="gridView" class="view view-grid" aria-label="Grid view">
       <div id="grid" class="grid" role="list"></div>
     </section>
@@ -123,12 +124,12 @@
     </div>
   </dialog>
 
-  <!-- FAB (floating action button) -->
+  <!-- FAB -->
   <button id="fab" class="fab" aria-haspopup="dialog" aria-controls="fabMenu" aria-label="Add">
     <span class="fab-plus" aria-hidden="true">＋</span>
   </button>
 
-  <!-- FAB menu (action sheet) -->
+  <!-- FAB menu -->
   <dialog id="fabMenu">
     <div class="sheet">
       <h3>Add Vinyl</h3>
@@ -140,7 +141,7 @@
     </div>
   </dialog>
 
-  <!-- Enter UPC (manual) small modal -->
+  <!-- Enter UPC (manual) -->
   <dialog id="enterUPCModal">
     <form id="enterUPCForm" class="enter-form" method="dialog">
       <h3>Enter UPC Code</h3>
@@ -175,6 +176,7 @@
     </article>
   </template>
 
-  <script src="/app.js"></script>
+  <!-- IMPORTANT: relative path + cache-bust -->
+  <script src="app.js?v=pages1"></script>
 </body>
 </html>
