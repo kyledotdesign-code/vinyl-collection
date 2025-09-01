@@ -4,6 +4,7 @@
    - "Update Collection" button: clear local state & reload from Sheet
    - Mobile-friendly scanning: ZXing fallback for iOS/Android
    - Detailed server error reporting
+   - NEW: Save button shows "Saving..." while saving
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -59,7 +60,7 @@ const state = {
   sortKey: 'title',
   view: 'scroll',
   // scanning engines
-  mediaStream: null,              // for BarcodeDetector path
+  mediaStream: null,
   scanning: false,
   rafId: null,
   detectorSupported: 'BarcodeDetector' in window,
@@ -345,7 +346,6 @@ async function addToCollection(rec){
 
 // 15) SCANNING — mobile-friendly (ZXing fallback)
 async function loadZXing(){
-  // Try ESM first, fallback to UMD global for older Safari
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
       BrowserMultiFormatReader: window.ZXing.BrowserMultiFormatReader,
@@ -381,12 +381,8 @@ async function startZXing(){
   state.zxingReader = reader;
   state.usingZXing = true;
 
-  // Prefer back camera
   const constraints = {
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 1280 }, height: { ideal: 720 }
-    },
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
     audio: false
   };
 
@@ -399,17 +395,15 @@ async function startZXing(){
         try {
           await handleUPC(result.getText());
         } finally {
-          resolve(); // we got a code; resolve the promise
+          resolve();
         }
       } else if (err && !(err && err.name === 'NotFoundException')) {
-        // Real error (camera denied, etc.)
         reject(err);
       }
     });
   });
 }
 
-// BarcodeDetector path (desktop where supported)
 async function startBDCamera(){
   const constraints={ video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } }, audio:false };
   state.mediaStream=await navigator.mediaDevices.getUserMedia(constraints);
@@ -445,30 +439,27 @@ async function scanLoop(){
 
 async function startScanEngine(){
   state.handlingUPC = false;
-  // Mobile: prefer ZXing immediately; Desktop with BD: try BD first
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   try{
     if (isMobile || !state.detectorSupported) {
-      els.scanHint.textContent = 'Scanning...';
+      els.scanHint.textContent = 'Scanning (ZXing)…';
       await startZXing();
     } else {
       await startBDCamera();
-      // Safety: if BD doesn’t find anything soon, fall back to ZXing
       setTimeout(async ()=>{
         if (!state.handlingUPC && !state.usingZXing && els.scanModal.open) {
           console.warn('Falling back to ZXing after BD warmup timeout.');
           await stopScanEngines();
-          els.scanHint.textContent = 'Scanning...';
+          els.scanHint.textContent = 'Scanning (ZXing)…';
           await startZXing();
         }
       }, 4000);
     }
   }catch(err){
     console.error('Start scan error', err);
-    // Final fallback: try ZXing if BD path failed
     if (!state.usingZXing) {
       try {
-        els.scanHint.textContent = 'Scanning...';
+        els.scanHint.textContent = 'Scanning (ZXing)…';
         await startZXing();
       } catch (e2) {
         console.error('ZXing also failed', e2);
@@ -481,13 +472,11 @@ async function startScanEngine(){
 }
 
 async function stopScanEngines(){
-  // Stop BD loop + camera
   state.scanning=false;
   if(state.rafId) cancelAnimationFrame(state.rafId);
   if(state.mediaStream){ for(const t of state.mediaStream.getTracks()){ t.stop(); } state.mediaStream=null; }
   els.scanVideo.pause(); els.scanVideo.srcObject=null;
 
-  // Stop ZXing controls
   if (state.zxingControls) { try { state.zxingControls.stop(); } catch{} state.zxingControls = null; }
   if (state.zxingReader) { try { state.zxingReader.reset(); } catch{} state.zxingReader = null; }
   state.usingZXing = false;
@@ -515,14 +504,12 @@ els.closeScan?.addEventListener('click',closeScanModal);
 els.manualUPC.addEventListener('click',async ()=>{
   const upc=prompt("Enter UPC (numbers only):")||""; const trimmed=upc.replace(/\D+/g,'').trim();
   if(!trimmed){ els.scanStatus.textContent='No UPC entered.'; return; }
-  // If user enters manually while engines running, stop them
   await stopScanEngines();
   await handleUPC(trimmed);
 });
 
 // 17) After-detect flow
 async function handleUPC(upc){
-  // Stop any scanning immediately so we don’t double-handle
   await stopScanEngines();
   els.scanStatus.textContent=`UPC: ${upc} — looking up…`;
   try{
@@ -537,11 +524,11 @@ async function handleUPC(upc){
     els.formUPC.value=upc; els.formArtist.value=""; els.formTitle.value=""; els.formGenre.value=""; els.formNotes.value="";
     els.saveRecord.disabled=false; els.scanStatus.textContent=`No match found. Enter details and Save.`; els.formArtist.focus();
   } finally {
-    state.handlingUPC = false; // allow rescans if user reopens
+    state.handlingUPC = false;
   }
 }
 
-// 18) Submit form → save to sheet
+// 18) Submit form → save to sheet (button shows "Saving...")
 els.scanForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const upc=(els.formUPC.value||"").trim();
@@ -557,7 +544,11 @@ els.scanForm.addEventListener('submit', async (e)=>{
     state.pending ? { coverRaw: state.pending.coverRaw || "" } : {}
   );
 
-  els.saveRecord.disabled=true; els.scanStatus.textContent="Saving…";
+  const prevLabel = els.saveRecord.textContent;
+  els.saveRecord.textContent = 'Saving...';
+  els.saveRecord.disabled = true;
+  els.scanStatus.textContent = "Saving…";
+
   try{
     const server = await addToCollection(rec);
     els.scanStatus.textContent = `Saved to "${server.sheet}" (row ${server.row})`;
@@ -566,7 +557,8 @@ els.scanForm.addEventListener('submit', async (e)=>{
     console.error(err);
     els.scanStatus.textContent = "Saved locally. " + err.message;
   } finally {
-    els.saveRecord.disabled=false;
+    els.saveRecord.textContent = prevLabel || 'Save to Sheet';
+    els.saveRecord.disabled = false;
   }
 });
 
