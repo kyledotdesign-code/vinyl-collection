@@ -1,23 +1,19 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   - Scan modal (ZXing fallback) → form → Save to Sheet
-   - "Update Collection" = HARD RESYNC from Google Sheet (purges strays)
-   - Success message: "Saved"
-   - Reliable cover fetching (Cover Art Archive front-500 URLs)
-   - NEW: Fixed header offset (mobile-safe) + minor mobile polish
+   - Cosmetic-only: no logic changes from your latest
+   - Fixed header offset helper (unchanged)
+   - Scan modal uses same behavior; labels updated in HTML
 --------------------------------------------*/
 
 // 0) CONFIG
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
 
-// Use your provided Apps Script URL
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbwmcZPZbg3-Cfev8OTt_YGIsrTZ3Lb_BZ2xQ5bRxh9Hpy9OvkYkOqeubtl1MQ4OGqZAJw/exec";
 
 // 1) ELEMENTS
 const $ = (s, r = document) => r.querySelector(s);
-
 const els = {
   search: $('#search'),
   viewScrollBtn: $('#view-scroll'),
@@ -53,20 +49,18 @@ const els = {
   saveRecord: $('#saveRecord'),
 };
 
-// 1a) Fixed header offset → keep content below the header on all devices
+// 1a) Fixed header offset
 (function setHeaderOffset(){
   const header = document.querySelector('.site-header');
   const apply = () => {
     if (!header) return;
     document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px');
   };
-  // apply on load and when the header size might change
   window.addEventListener('load', apply, { once:true });
   window.addEventListener('resize', apply);
   if ('ResizeObserver' in window && header){
     new ResizeObserver(apply).observe(header);
   } else {
-    // fallback periodic adjust (cheap)
     setTimeout(apply, 300);
   }
 })();
@@ -77,7 +71,6 @@ const state = {
   filtered: [],
   sortKey: 'title',
   view: 'scroll',
-  // scanning engines
   mediaStream: null,
   scanning: false,
   rafId: null,
@@ -90,7 +83,6 @@ const state = {
   pending: null,
 };
 
-// Helper to bust Google "Publish to web" cache when we REALLY want fresh
 const withBust = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
 
 // 3) CSV PARSER
@@ -150,7 +142,7 @@ function placeholderFor(a,b){
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-// 6) LOAD & NORMALIZE (source of truth = Google Sheet)
+// 6) LOAD & NORMALIZE (Google Sheet = source of truth)
 async function loadFromSheet(forceFresh=false){
   const url = forceFresh ? withBust(SHEET_CSV) : SHEET_CSV;
   const res = await fetch(url, { cache:"no-store" });
@@ -171,7 +163,6 @@ async function loadFromSheet(forceFresh=false){
     recs.push({ title,artist,notes,genre,coverRaw,altRaw,upc,cover:"" });
   }
 
-  // HARD REPLACE: whatever is in the sheet becomes truth
   state.all = recs;
   state.filtered = [...recs];
   applySort(); render();
@@ -179,7 +170,6 @@ async function loadFromSheet(forceFresh=false){
   await resolveCovers(recs,6);
   render();
 }
-
 async function resolveCovers(records,concurrency=6){
   let i=0; const workers=Array.from({length:concurrency},async()=>{
     while(i<records.length){ const idx=i++; const r=records[idx];
@@ -299,7 +289,7 @@ function openStats(){
 }
 els.statsBtn.addEventListener('click',openStats);
 
-// 12) UPC LOOKUP (MusicBrainz + Cover Art Archive) — direct image URL fallback
+// 12) UPC LOOKUP (unchanged logic)
 async function lookupByUPC(upc){
   const url=`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r=await fetch(url,{ headers:{ 'Accept':'application/json' }});
@@ -329,7 +319,7 @@ async function lookupByUPC(upc){
   return { title, artist, upc, coverRaw: coverUrl || "", altRaw:"", notes:"", genre:"" };
 }
 
-// 13) ADD TO GOOGLE SHEET — strict JSON + detailed errors
+// 13) Add to Google Sheet (unchanged)
 async function addRecordToSheet(rec){
   const form=new URLSearchParams({
     title:rec.title||"", artist:rec.artist||"", upc:rec.upc||"",
@@ -345,28 +335,21 @@ async function addRecordToSheet(rec){
 
   let json=null, text="";
   try { json = await resp.clone().json(); } catch { text = await resp.text().catch(()=>"(no body)"); }
-
   if(!json || !json.ok){
     const snippet = (text || JSON.stringify(json)).slice(0,300).replace(/\s+/g,' ').trim();
-    const msg = `Server did not confirm (status ${resp.status}). Response: ${snippet || '(empty)'}`;
-    throw new Error(msg);
+    throw new Error(`Server did not confirm (status ${resp.status}). Response: ${snippet || '(empty)'}`);
   }
   return json;
 }
 
-// 14) ADD + CONFIRM (optimistic UI), success message simplified
+// 14) Optimistic add (unchanged)
 async function addToCollection(rec){
-  // Render immediately with best cover we have
   rec.cover = await chooseCover(rec.coverRaw, rec.altRaw);
-  state.all.unshift(rec);
-  state.filtered=[...state.all];
-  applySort(); render();
-
-  // Persist to Sheet
+  state.all.unshift(rec); state.filtered=[...state.all]; applySort(); render();
   await addRecordToSheet(rec);
 }
 
-// 15) SCANNING — mobile-friendly (ZXing fallback)
+// 15) Scanning engines (unchanged behavior)
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
@@ -414,11 +397,7 @@ async function startZXing(){
 
       if (result && !state.handlingUPC) {
         state.handlingUPC = true;
-        try {
-          await handleUPC(result.getText());
-        } finally {
-          resolve();
-        }
+        try { await handleUPC(result.getText()); } finally { resolve(); }
       } else if (err && !(err && err.name === 'NotFoundException')) {
         reject(err);
       }
@@ -435,12 +414,8 @@ async function startBDCamera(){
     try { state.detector=new window.BarcodeDetector({ formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39'] }); }
     catch { state.detector=new window.BarcodeDetector(); }
   }
-
-  state.scanning = true;
-  els.scanHint.textContent = 'Point your camera at the barcode.';
-  scanLoop();
+  state.scanning = true; els.scanHint.textContent = 'Point your camera at the barcode.'; scanLoop();
 }
-
 async function scanLoop(){
   if(!state.scanning) return;
   try{
@@ -470,7 +445,6 @@ async function startScanEngine(){
       await startBDCamera();
       setTimeout(async ()=>{
         if (!state.handlingUPC && !state.usingZXing && els.scanModal.open) {
-          console.warn('Falling back to ZXing after BD warmup timeout.');
           await stopScanEngines();
           els.scanHint.textContent = 'Scanning (ZXing)…';
           await startZXing();
@@ -480,13 +454,8 @@ async function startScanEngine(){
   }catch(err){
     console.error('Start scan error', err);
     if (!state.usingZXing) {
-      try {
-        els.scanHint.textContent = 'Scanning (ZXing)…';
-        await startZXing();
-      } catch (e2) {
-        console.error('ZXing also failed', e2);
-        els.scanStatus.textContent='Camera started, but live scan not available. Use “Enter UPC manually.”';
-      }
+      try { els.scanHint.textContent = 'Scanning (ZXing)…'; await startZXing(); }
+      catch { els.scanStatus.textContent='Camera started, but live scan not available. Use “Enter UPC manually.”'; }
     } else {
       els.scanStatus.textContent='Live scan not available. Use “Enter UPC manually.”';
     }
@@ -504,30 +473,21 @@ async function stopScanEngines(){
   state.usingZXing = false;
 }
 
-// 16) OPEN/CLOSE MODAL
+// 16) Modal open/close
 async function openScanModal(){
   els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
   els.scanModal.showModal();
-  try{
-    els.scanHint.textContent='Starting camera…';
-    await startScanEngine();
-  }catch(e){
-    console.error(e);
-    els.scanStatus.textContent='Camera unavailable. Use “Enter UPC manually.”';
-  }
+  try{ els.scanHint.textContent='Starting camera…'; await startScanEngine(); }
+  catch{ els.scanStatus.textContent='Camera unavailable. Use “Enter UPC manually.”'; }
 }
-function closeScanModal(){
-  stopScanEngines(); els.scanModal.close();
-}
+function closeScanModal(){ stopScanEngines(); els.scanModal.close(); }
 
-// Events
 els.scanBtn.addEventListener('click',openScanModal);
 els.closeScan?.addEventListener('click',closeScanModal);
 els.manualUPC.addEventListener('click',async ()=>{
   const upc=prompt("Enter UPC (numbers only):")||""; const trimmed=upc.replace(/\D+/g,'').trim();
   if(!trimmed){ els.scanStatus.textContent='No UPC entered.'; return; }
-  await stopScanEngines();
-  await handleUPC(trimmed);
+  await stopScanEngines(); await handleUPC(trimmed);
 });
 
 // 17) After-detect flow
@@ -540,17 +500,16 @@ async function handleUPC(upc){
     els.formGenre.value=rec.genre||""; els.formNotes.value=""; els.saveRecord.disabled=false;
     els.scanStatus.textContent=`Found: ${rec.artist || '(unknown)'} — ${rec.title || '(unknown)'} • review & Save`;
     els.formArtist.focus();
-  }catch(e){
-    console.error(e);
+  }catch{
     state.pending={ upc, title:"", artist:"", genre:"", notes:"", coverRaw:"", altRaw:"" };
     els.formUPC.value=upc; els.formArtist.value=""; els.formTitle.value=""; els.formGenre.value=""; els.formNotes.value="";
-    els.saveRecord.disabled=false; els.scanStatus.textContent=`No match found. Enter details and Save.`; els.formArtist.focus();
+    els.saveRecord.disabled=false; els.scanStatus.textContent=`No match found. Enter details and Save`; els.formArtist.focus();
   } finally {
     state.handlingUPC = false;
   }
 }
 
-// 18) Submit form → save to sheet ("Saving..." label, success shows "Saved")
+// 18) Submit form → save
 els.scanForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const upc=(els.formUPC.value||"").trim();
@@ -576,7 +535,6 @@ els.scanForm.addEventListener('submit', async (e)=>{
     els.scanStatus.textContent = "Saved";
     setTimeout(()=> closeScanModal(), 700);
   }catch(err){
-    console.error(err);
     els.scanStatus.textContent = "Saved locally. " + err.message;
   } finally {
     els.saveRecord.textContent = prevLabel || 'Save to Sheet';
@@ -584,11 +542,9 @@ els.scanForm.addEventListener('submit', async (e)=>{
   }
 });
 
-// 19) UPDATE COLLECTION (hard resync, removes strays)
+// 19) Update Collection (hard resync)
 els.refresh?.addEventListener('click', async ()=>{
   if (els.scanModal?.open) closeScanModal();
-
-  // Clear any local-only state
   els.search.value = '';
   state.pending = null;
   els.scanForm?.reset?.();
@@ -596,23 +552,19 @@ els.refresh?.addEventListener('click', async ()=>{
   if (els.saveRecord) els.saveRecord.disabled = true;
   els.scanStatus.textContent = '';
 
-  // Show progress
   const originalText = els.refresh.textContent;
   els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
-
   try {
     state.all = []; state.filtered = []; render();
-    await loadFromSheet(true); // forceFresh + hard replace
-  } catch (err) {
-    console.error(err);
+    await loadFromSheet(true);
+  } catch {
     alert('Update failed. Check your published CSV link.');
   } finally {
     els.refresh.disabled = false; els.refresh.textContent = originalText;
   }
 });
 
-// 20) KICKOFF
-loadFromSheet().catch(err=>{
-  console.error(err);
+// 20) Kickoff
+loadFromSheet().catch(()=>{
   alert("Couldn’t load the Google Sheet. Make sure your link is published as CSV (output=csv).");
 });
