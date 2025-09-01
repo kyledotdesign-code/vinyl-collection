@@ -8,9 +8,7 @@
   --accent-2: #90e9b3;
   --border: #1c232e;
   --shadow: 0 10px 30px rgba(0,0,0,.25);
-
-  /* dynamic header height set by JS; fallback for very first paint */
-  --header-h: 140px;
+  --header-h: 140px; /* set dynamically in JS, fallback here */
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -24,7 +22,7 @@ body{
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Header — now FIXED so it never disappears */
+/* Fixed header (never disappears) */
 .site-header{
   position:fixed; top:0; left:0; right:0; z-index:1000;
   backdrop-filter: blur(10px);
@@ -44,7 +42,7 @@ body{
 }
 #search::placeholder{color:var(--muted)}
 
-/* Buttons */
+/* Buttons row: horizontal scroll on mobile */
 .btn-row{
   margin-top:12px;display:flex;flex-wrap:nowrap;gap:10px;align-items:center;
   overflow-x:auto; -webkit-overflow-scrolling: touch; padding-bottom:6px;
@@ -66,11 +64,11 @@ select.btn{appearance:none}
 .btn.small{padding:9px 12px;font-weight:700;font-size:14px}
 
 /* Segmented toggle */
-.segmented{display:inline-flex;background:#121a26;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px; flex:0 0 auto;}
-.seg-btn{background:transparent;border:none;padding:8px 12px;border-radius:10px; white-space:nowrap;}
+.segmented{display:inline-flex;background:#121a26;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px;flex:0 0 auto}
+.seg-btn{background:transparent;border:none;padding:8px 12px;border-radius:10px;white-space:nowrap}
 .seg-btn.active{background:#1a2434;border:1px solid #233047}
 
-/* Layout — add top padding so content doesn’t sit under fixed header */
+/* Layout (content below fixed header) */
 main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .view{display:none}
 .view.active{display:block}
@@ -137,16 +135,39 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,20
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{background:#142549;border:1px solid #20335d;color:#cfe2ff;padding:6px 10px;border-radius:999px;font-weight:800}
 
-/* Scan modal */
+/* Scan modal — mobile polish */
 dialog#scanModal{border:none;padding:0;background:transparent}
-dialog#scanModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,20,.55)}
-.scan-card{max-width:860px;width:min(94vw,860px);border:none;border-radius:16px;padding:18px;background:#111722;color:var(--fg);box-shadow:var(--shadow);display:grid;gap:14px}
-.scan-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.scan-actions{display:flex;gap:8px}
-.video-wrap{position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0a0f18}
-.video-wrap video{display:block;width:100%;aspect-ratio:16/9;background:#000}
-.scan-hint{position:absolute;left:12px;bottom:10px;background:rgba(0,0,0,.5);padding:6px 10px;border-radius:8px}
-.scan-status{margin-top:6px;color:#cfe2ff}
+dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,.55)}
+.scan-card{
+  max-width:860px;width:min(94vw,860px);
+  /* Important for mobile: let the card itself scroll, keep header pinned */
+  max-height:min(94vh, 820px);
+  border:none;border-radius:16px;background:#111722;color:var(--fg);box-shadow:var(--shadow);
+  display:flex;flex-direction:column;gap:12px;overflow:auto;
+}
+.scan-head{
+  position:sticky; top:0; z-index:2;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:linear-gradient(180deg, #111722 90%, rgba(17,23,34,0));
+  padding-top:8px;
+}
+.scan-actions{display:flex;gap:8px;flex-wrap:nowrap}
+.video-wrap{
+  position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0a0f18;flex:0 0 auto;
+}
+.video-wrap video{
+  display:block;width:100%;
+  /* Keep video from getting silly tall on phones */
+  max-height:46dvh; aspect-ratio: 4 / 3;
+  object-fit:cover; background:#000;
+}
+.scan-hint{
+  position:absolute;left:12px;bottom:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px
+}
+.scan-status{margin-top:2px;color:#cfe2ff}
+
+/* Prevent iOS auto-zoom on inputs by keeping ≥16px */
+.form-grid input,.form-grid textarea{font-size:16px}
 
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px}
 .form-grid label{display:grid;gap:6px}
@@ -164,4 +185,11 @@ dialog#scanModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,20,
   .scroller{grid-auto-columns:minmax(86vw,94vw);gap:16px;padding:14px 52px 26px}
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
   .form-grid{grid-template-columns:1fr}
+
+  /* Make scan modal feel like a bottom sheet */
+  .scan-card{
+    width:100vw; max-width:none;
+    height: calc(100dvh - env(safe-area-inset-top, 0px) - 20px);
+    max-height:none; border-radius:16px 16px 0 0;
+  }
 }
