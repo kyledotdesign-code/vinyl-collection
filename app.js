@@ -1,6 +1,8 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   - Modern black theme + header search icon that expands
+   - Search expands in header; auto-closes on scroll/outside click
+   - Width is capped so it never overlaps the title/logo
+   - Inverted FAB (white with black plus)
    - All previous features preserved
 --------------------------------------------*/
 
@@ -16,6 +18,8 @@ const $ = (s, r = document) => r.querySelector(s);
 const els = {
   // Header + search
   header: document.querySelector('.site-header'),
+  brandRow: document.querySelector('.brand-row'),
+  brandBox: document.querySelector('.brand'),
   search: $('#search'),
   searchToggle: $('#searchToggle'),
   searchClose: $('#searchClose'),
@@ -78,22 +82,70 @@ const els = {
   if ('ResizeObserver' in window && header){ new ResizeObserver(apply).observe(header); } else { setTimeout(apply, 300); }
 })();
 
-// 1b) Search icon → expand/collapse
+// 1b) Compute max search width so it never collides with title/logo
+function updateSearchMax(){
+  if (!els.brandRow || !els.brandBox || !els.header) return;
+  const rowW = els.brandRow.getBoundingClientRect().width;
+  const brandW = els.brandBox.getBoundingClientRect().width;
+  // Keep at least 12px gap to the brand, and room for the close icon (40px + 8 gap)
+  const safeGap = 12 + 40 + 8;
+  const max = Math.max(180, Math.floor(rowW - brandW - safeGap));
+  document.documentElement.style.setProperty('--search-max', max + 'px');
+}
+window.addEventListener('resize', updateSearchMax);
+window.addEventListener('orientationchange', updateSearchMax);
+
+// 1c) Search icon → expand/collapse (auto-close on scroll / outside click)
 (function wireSearch(){
   if (!els.search || !els.searchToggle || !els.searchClose || !els.header) return;
+
+  let outsideHandler = null;
+  let scrollHandler = null;
+
   const open = () => {
     els.header.classList.add('search-open');
     els.searchToggle.setAttribute('aria-expanded','true');
+    updateSearchMax();
     setTimeout(()=> els.search.focus(), 60);
+
+    // click/touch outside → close
+    outsideHandler = (ev) => {
+      const container = els.header.querySelector('.search-inline');
+      if (!container) return;
+      if (!container.contains(ev.target)) close();
+    };
+    document.addEventListener('mousedown', outsideHandler);
+    document.addEventListener('touchstart', outsideHandler, { passive:true });
+
+    // scroll → close
+    scrollHandler = () => close();
+    window.addEventListener('scroll', scrollHandler, { passive:true });
   };
+
   const close = () => {
     els.header.classList.remove('search-open');
     els.searchToggle.setAttribute('aria-expanded','false');
+    // cleanup handlers
+    if (outsideHandler){
+      document.removeEventListener('mousedown', outsideHandler);
+      document.removeEventListener('touchstart', outsideHandler);
+      outsideHandler = null;
+    }
+    if (scrollHandler){
+      window.removeEventListener('scroll', scrollHandler);
+      scrollHandler = null;
+    }
   };
-  els.searchToggle.addEventListener('click', open);
+
+  els.searchToggle.addEventListener('click', () => {
+    if (!els.header.classList.contains('search-open')) open();
+  });
   els.searchClose.addEventListener('click', close);
   // ESC to close
   els.search.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') { close(); els.search.blur(); } });
+
+  // initial calc
+  updateSearchMax();
 })();
 
 // 2) STATE
@@ -581,7 +633,6 @@ els.scanForm.addEventListener('submit', async (e)=>{
 // 15) Update Collection (hard resync)
 els.refresh?.addEventListener('click', async ()=>{
   if (els.scanModal?.open) closeScanModal();
-  // keep search state; just refresh data
   const originalText = els.refresh.textContent;
   els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
   try { state.all = []; state.filtered = []; render(); await loadFromSheet(true); }
@@ -609,6 +660,9 @@ els.enterUPCForm.addEventListener('submit', async (e)=>{
 });
 
 /* Kickoff */
-loadFromSheet().then(centerFirstCardIfMobile).catch(()=>{
+loadFromSheet().then(()=>{
+  updateSearchMax();
+  centerFirstCardIfMobile();
+}).catch(()=>{
   alert("Couldn’t load the Google Sheet. Make sure your link is published as CSV (output=csv).");
 });
