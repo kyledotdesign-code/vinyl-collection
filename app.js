@@ -1,7 +1,7 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   - Centers first card on phones with rAF
-   - Arrow/safe-area handled by CSS
+   - Fix: arrow buttons now move exactly one card (centered)
+   - Mobile scan modal stays clear of edges (CSS)
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -30,6 +30,7 @@ const els = {
   cardTpl: $('#cardTpl'),
   scrollView: $('#scrollView'),
   gridView: $('#gridView'),
+  // Scan
   scanBtn: $('#scanBtn'),
   scanModal: $('#scanModal'),
   scanVideo: $('#scanVideo'),
@@ -37,6 +38,7 @@ const els = {
   manualUPC: $('#manualUPC'),
   closeScan: $('#closeScan'),
   scanStatus: $('#scanStatus'),
+  // Form
   scanForm: $('#scanForm'),
   formUPC: $('#formUPC'),
   formArtist: $('#formArtist'),
@@ -49,20 +51,35 @@ const els = {
 // 1a) Fixed header offset
 (function setHeaderOffset(){
   const header = document.querySelector('.site-header');
-  const apply = () => { if (header) document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px'); };
+  const apply = () => {
+    if (!header) return;
+    document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px');
+  };
   window.addEventListener('load', apply, { once:true });
   window.addEventListener('resize', apply);
-  if ('ResizeObserver' in window && header){ new ResizeObserver(apply).observe(header); } else { setTimeout(apply, 300); }
+  if ('ResizeObserver' in window && header){
+    new ResizeObserver(apply).observe(header);
+  } else {
+    setTimeout(apply, 300);
+  }
 })();
 
 // 2) STATE
 const state = {
-  all: [], filtered: [],
-  sortKey: 'title', view: 'scroll',
-  mediaStream: null, scanning:false, rafId:null,
-  detectorSupported: 'BarcodeDetector' in window, detector:null,
-  usingZXing:false, zxingReader:null, zxingControls:null,
-  handlingUPC:false, pending:null,
+  all: [],
+  filtered: [],
+  sortKey: 'title',
+  view: 'scroll',
+  mediaStream: null,
+  scanning: false,
+  rafId: null,
+  detectorSupported: 'BarcodeDetector' in window,
+  detector: null,
+  usingZXing: false,
+  zxingReader: null,
+  zxingControls: null,
+  handlingUPC: false,
+  pending: null,
 };
 
 const withBust = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
@@ -196,20 +213,43 @@ function createCard(rec){
   return node;
 }
 
-/* Center first card on phones using actual measurements.
-   Works with CSS ::before spacer and the main's inner padding. */
+/* Center first card on phones */
 function centerFirstCardIfMobile(){
   const isMobile = window.matchMedia('(max-width: 720px)').matches;
   if (!isMobile || !els.scrollView.classList.contains('active')) return;
-
   const first = els.scroller.querySelector('.card');
   if (!first) return;
-
   requestAnimationFrame(()=>{
     const targetLeft = first.offsetLeft + first.offsetWidth/2 - els.scroller.clientWidth/2;
     els.scroller.scrollLeft = Math.max(0, Math.round(targetLeft));
   });
 }
+
+/* --- New: index-based arrow navigation (no drift) --- */
+const cardsList = () => Array.from(els.scroller.querySelectorAll('.card'));
+function currentCenteredIndex(){
+  const cards = cardsList();
+  if (!cards.length) return 0;
+  const scRect = els.scroller.getBoundingClientRect();
+  const centerX = scRect.left + scRect.width/2;
+  let best = 0, bestDist = Infinity;
+  for (let i=0;i<cards.length;i++){
+    const r = cards[i].getBoundingClientRect();
+    const c = r.left + r.width/2;
+    const d = Math.abs(c - centerX);
+    if (d < bestDist){ bestDist = d; best = i; }
+  }
+  return best;
+}
+function scrollToIndex(idx){
+  const cards = cardsList();
+  if (!cards.length) return;
+  idx = Math.max(0, Math.min(idx, cards.length-1));
+  const card = cards[idx];
+  const left = card.offsetLeft + card.offsetWidth/2 - els.scroller.clientWidth/2;
+  els.scroller.scrollTo({ left: Math.max(0, Math.round(left)), behavior: 'smooth' });
+}
+/* ---------------------------------------------------- */
 
 function renderScroll(){
   els.scroller.innerHTML = '';
@@ -229,7 +269,6 @@ function render(){
   if(isScroll){ renderScroll(); toggleArrows(true); } else { renderGrid(); toggleArrows(false); }
 }
 
-// Re-center on orientation/resize when in scroll view (helps Pro/Max widths)
 window.addEventListener('resize', centerFirstCardIfMobile);
 window.addEventListener('orientationchange', centerFirstCardIfMobile);
 
@@ -256,11 +295,16 @@ els.shuffle.addEventListener('click',()=>{
 els.viewScrollBtn.addEventListener('click',()=>{ state.view='scroll'; render(); });
 els.viewGridBtn.addEventListener('click',()=>{ state.view='grid'; render(); });
 
-// 10) ARROWS
+// 10) ARROWS (now card-index based)
 function toggleArrows(show){ els.prev.style.display=show?'':'none'; els.next.style.display=show?'':'none'; }
-function scrollByAmount(px){ els.scroller.scrollBy({ left:px, behavior:'smooth' }); }
-els.prev.addEventListener('click',()=>scrollByAmount(-Math.round(els.scroller.clientWidth*0.9)));
-els.next.addEventListener('click',()=>scrollByAmount(Math.round(els.scroller.clientWidth*0.9)));
+els.prev.addEventListener('click',()=>{
+  const i = currentCenteredIndex();
+  scrollToIndex(i - 1);
+});
+els.next.addEventListener('click',()=>{
+  const i = currentCenteredIndex();
+  scrollToIndex(i + 1);
+});
 
 // 11) STATS
 function buildStats(recs){
@@ -441,7 +485,8 @@ async function startScanEngine(){
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   try{
     if (isMobile || !state.detectorSupported) {
-      els.scanHint.textContent = 'Scanning (ZXing)…'; await startZXing();
+      els.scanHint.textContent = 'Scanning (ZXing)…';
+      await startZXing();
     } else {
       await startBDCamera();
       setTimeout(async ()=>{
@@ -456,7 +501,7 @@ async function startScanEngine(){
     console.error('Start scan error', err);
     if (!state.usingZXing) {
       try { els.scanHint.textContent = 'Scanning (ZXing)…'; await startZXing(); }
-      catch { els.scanStatus.textContent='Camera started, but live scan not available. Use “Enter UPC manually.”'; }
+      catch { els.scanStatus.textContent='Live scan not available. Use “Enter UPC manually.”'; }
     } else {
       els.scanStatus.textContent='Live scan not available. Use “Enter UPC manually.”';
     }
@@ -467,6 +512,7 @@ async function stopScanEngines(){
   if(state.rafId) cancelAnimationFrame(state.rafId);
   if(state.mediaStream){ for(const t of state.mediaStream.getTracks()){ t.stop(); } state.mediaStream=null; }
   els.scanVideo.pause(); els.scanVideo.srcObject=null;
+
   if (state.zxingControls) { try { state.zxingControls.stop(); } catch{} state.zxingControls = null; }
   if (state.zxingReader) { try { state.zxingReader.reset(); } catch{} state.zxingReader = null; }
   state.usingZXing = false;
@@ -475,11 +521,15 @@ async function stopScanEngines(){
 // 16) Modal open/close
 async function openScanModal(){
   els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
-  els.scanModal.showModal(); document.body.classList.add('modal-open');
+  els.scanModal.showModal();
+  document.body.classList.add('modal-open');
   try{ els.scanHint.textContent='Starting camera…'; await startScanEngine(); }
   catch{ els.scanStatus.textContent='Camera unavailable. Use “Enter UPC manually.”'; }
 }
-function closeScanModal(){ stopScanEngines(); els.scanModal.close(); document.body.classList.remove('modal-open'); }
+function closeScanModal(){
+  stopScanEngines(); els.scanModal.close();
+  document.body.classList.remove('modal-open');
+}
 els.scanBtn.addEventListener('click',openScanModal);
 els.closeScan?.addEventListener('click',closeScanModal);
 els.manualUPC.addEventListener('click',async ()=>{
@@ -502,7 +552,9 @@ async function handleUPC(upc){
     state.pending={ upc, title:"", artist:"", genre:"", notes:"", coverRaw:"", altRaw:"" };
     els.formUPC.value=upc; els.formArtist.value=""; els.formTitle.value=""; els.formGenre.value=""; els.formNotes.value="";
     els.saveRecord.disabled=false; els.scanStatus.textContent=`No match found. Enter details and Save`; els.formArtist.focus();
-  } finally { state.handlingUPC = false; }
+  } finally {
+    state.handlingUPC = false;
+  }
 }
 
 // 18) Submit form → save
@@ -541,16 +593,23 @@ els.scanForm.addEventListener('submit', async (e)=>{
 // 19) Update Collection (hard resync)
 els.refresh?.addEventListener('click', async ()=>{
   if (els.scanModal?.open) closeScanModal();
-  els.search.value = ''; state.pending = null;
-  els.scanForm?.reset?.(); if (els.formUPC) els.formUPC.value = '';
+  els.search.value = '';
+  state.pending = null;
+  els.scanForm?.reset?.();
+  if (els.formUPC) els.formUPC.value = '';
   if (els.saveRecord) els.saveRecord.disabled = true;
   els.scanStatus.textContent = '';
 
   const originalText = els.refresh.textContent;
   els.refresh.disabled = true; els.refresh.textContent = 'Updating…';
-  try { state.all = []; state.filtered = []; render(); await loadFromSheet(true); }
-  catch { alert('Update failed. Check your published CSV link.'); }
-  finally { els.refresh.disabled = false; els.refresh.textContent = originalText; }
+  try {
+    state.all = []; state.filtered = []; render();
+    await loadFromSheet(true);
+  } catch {
+    alert('Update failed. Check your published CSV link.');
+  } finally {
+    els.refresh.disabled = false; els.refresh.textContent = originalText;
+  }
 });
 
 // 20) Kickoff
