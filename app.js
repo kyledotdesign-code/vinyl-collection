@@ -1,8 +1,6 @@
 /* -------------------------------------------
    Vinyl Collection — app.js
-   Cosmetic-focused update:
-   - Adds body modal-open class to prevent background scroll on mobile
-   - Keeps all previous behavior (scan, save, resync) intact
+   Mobile scroll-centering + tiny bugfix in shuffle
 --------------------------------------------*/
 
 // 0) CONFIG
@@ -142,7 +140,7 @@ function placeholderFor(a,b){
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-// 6) LOAD & NORMALIZE (Google Sheet = source of truth)
+// 6) LOAD & NORMALIZE
 async function loadFromSheet(forceFresh=false){
   const url = forceFresh ? withBust(SHEET_CSV) : SHEET_CSV;
   const res = await fetch(url, { cache:"no-store" });
@@ -213,8 +211,25 @@ function createCard(rec){
   node.addEventListener('click',()=>node.classList.toggle('flipped'));
   return node;
 }
-function renderScroll(){ els.scroller.innerHTML=''; state.filtered.forEach(r=>els.scroller.appendChild(createCard(r))); els.scroller.scrollLeft=0; }
-function renderGrid(){ els.grid.innerHTML=''; state.filtered.forEach(r=>els.grid.appendChild(createCard(r))); }
+
+function centerFirstCardIfMobile(){
+  const isMobile = window.matchMedia('(max-width: 720px)').matches;
+  if (!isMobile) return;
+  const first = els.scroller.querySelector('.card');
+  if (!first) return;
+  const targetLeft = first.offsetLeft + first.offsetWidth/2 - els.scroller.clientWidth/2;
+  els.scroller.scrollLeft = Math.max(0, targetLeft);
+}
+
+function renderScroll(){
+  els.scroller.innerHTML = '';
+  state.filtered.forEach(r => els.scroller.appendChild(createCard(r)));
+  centerFirstCardIfMobile();
+}
+function renderGrid(){
+  els.grid.innerHTML = '';
+  state.filtered.forEach(r => els.grid.appendChild(createCard(r)));
+}
 function render(){
   const isScroll=state.view==='scroll';
   els.scrollView.classList.toggle('active',isScroll);
@@ -238,7 +253,7 @@ els.sort.addEventListener('change',()=>{ state.sortKey=els.sort.value||'title'; 
 els.shuffle.addEventListener('click',()=>{
   for(let i=state.filtered.length-1;i>0;i--){
     const j=Math.floor(Math.random()*(i+1));
-    [state.filtered[i], state.filtered[j]] = [state.filtered[j]], [state.filtered[i]];
+    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]]; // fixed swap
   }
   render();
 });
@@ -289,7 +304,7 @@ function openStats(){
 }
 els.statsBtn.addEventListener('click',openStats);
 
-// 12) UPC LOOKUP (MusicBrainz + Cover Art Archive)
+// 12) UPC LOOKUP
 async function lookupByUPC(upc){
   const url=`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r=await fetch(url,{ headers:{ 'Accept':'application/json' }});
@@ -326,13 +341,7 @@ async function addRecordToSheet(rec){
     genre:rec.genre||"", notes:rec.notes||"",
     cover:rec.coverRaw||"", alt:rec.altRaw||""
   });
-
-  const resp = await fetch(APPS_SCRIPT_URL,{
-    method:'POST',
-    headers:{ 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' },
-    body: form.toString()
-  });
-
+  const resp = await fetch(APPS_SCRIPT_URL,{ method:'POST', headers:{ 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' }, body: form.toString() });
   let json=null, text="";
   try { json = await resp.clone().json(); } catch { text = await resp.text().catch(()=>"(no body)"); }
   if(!json || !json.ok){
@@ -349,7 +358,7 @@ async function addToCollection(rec){
   await addRecordToSheet(rec);
 }
 
-// 15) Scanning engines (unchanged logic)
+// 15) Scanning engines (unchanged)
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
@@ -386,15 +395,11 @@ async function startZXing(){
   state.zxingReader = reader;
   state.usingZXing = true;
 
-  const constraints = {
-    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-    audio: false
-  };
+  const constraints = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false };
 
   return new Promise((resolve, reject)=>{
     reader.decodeFromConstraints(constraints, els.scanVideo, async (result, err, controls)=>{
       if (controls && !state.zxingControls) state.zxingControls = controls;
-
       if (result && !state.handlingUPC) {
         state.handlingUPC = true;
         try { await handleUPC(result.getText()); } finally { resolve(); }
@@ -473,17 +478,17 @@ async function stopScanEngines(){
   state.usingZXing = false;
 }
 
-// 16) Modal open/close (now toggles body scroll lock)
+// 16) Modal open/close
 async function openScanModal(){
   els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
   els.scanModal.showModal();
-  document.body.classList.add('modal-open');        // lock background scroll on mobile
+  document.body.classList.add('modal-open');
   try{ els.scanHint.textContent='Starting camera…'; await startScanEngine(); }
   catch{ els.scanStatus.textContent='Camera unavailable. Use “Enter UPC manually.”'; }
 }
 function closeScanModal(){
   stopScanEngines(); els.scanModal.close();
-  document.body.classList.remove('modal-open');     // unlock background scroll
+  document.body.classList.remove('modal-open');
 }
 els.scanBtn.addEventListener('click',openScanModal);
 els.closeScan?.addEventListener('click',closeScanModal);
