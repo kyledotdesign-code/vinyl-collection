@@ -22,7 +22,6 @@ body{
   color:var(--fg);
   -webkit-tap-highlight-color: transparent;
 }
-/* prevent background scroll when dialog is open */
 body.modal-open{overflow:hidden}
 
 /* Fixed header */
@@ -138,7 +137,7 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(9,12,20
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{background:#142549;border:1px solid #20335d;color:#cfe2ff;padding:6px 10px;border-radius:999px;font-weight:800}
 
-/* Scan modal */
+/* Scan modal (kept from previous step) */
 dialog#scanModal{border:none;padding:0;background:transparent}
 dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,.55)}
 .scan-card{
@@ -160,10 +159,9 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,
 }
 .video-wrap video{
   display:block;width:100%;
-  max-height:46dvh; /* keep reasonable height on phones */
+  max-height:46dvh;
   aspect-ratio: 4 / 3; object-fit:cover; background:#000;
 }
-/* Scan frame overlay */
 .scan-overlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
 .scan-frame{
   position:relative;
@@ -179,40 +177,47 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(9,12,20,
   animation:sweep 2.2s ease-in-out infinite;
 }
 @keyframes sweep{
-  0%{ top:10% }
-  50%{ top:calc(100% - 10%) }
-  100%{ top:10% }
+  0%{ top:10% } 50%{ top:calc(100% - 10%) } 100%{ top:10% }
 }
-.scan-hint{
-  position:absolute;left:12px;bottom:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;
-  backdrop-filter: blur(3px);
-}
+.scan-hint{ position:absolute;left:12px;bottom:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px; backdrop-filter: blur(3px); }
 .scan-status{margin-top:6px;color:#cfe2ff}
-
-/* Form */
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px;padding:0 clamp(12px,2vw,18px) 12px}
 .form-grid label{display:grid;gap:6px}
 .form-grid label.wide{grid-column:1 / -1}
 .form-grid input,.form-grid textarea{
   width:100%; padding:12px 14px; border-radius:10px;
-  border:1px solid var(--border); background:#101827; color:var(--fg);
-  font-size:16px; /* prevent iOS zoom */
+  border:1px solid var(--border); background:#101827; color:#fff; font-size:16px;
 }
 .form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px}
-.form-actions.sticky{
-  position:sticky; bottom:0; z-index:1;
-  padding:10px 0;
-  background:linear-gradient(180deg, rgba(17,23,34,0), rgba(17,23,34,1) 40%);
-  margin-top:8px;
-}
+.form-actions.sticky{ position:sticky; bottom:0; z-index:1; padding:10px 0; background:linear-gradient(180deg, rgba(17,23,34,0), rgba(17,23,34,1) 40%); margin-top:8px; }
 
-/* Mobile full-screen bottom-sheet feel */
+/* MOBILE POLISH */
 @media (max-width: 720px){
   .btn-row{justify-content:flex-start}
   main{padding: calc(var(--header-h) + 10px) 12px 20px}
-  .scroller{grid-auto-columns:minmax(86vw,94vw);gap:16px;padding:14px 52px 26px}
+
+  /* Center a single card in scroll view */
+  .scroller{
+    /* set a reusable mobile card width */
+    --card-w: 86vw;
+    grid-auto-columns: var(--card-w);
+    padding:14px 0 26px;                /* remove side padding so we can center cleanly */
+    gap:16px;
+    scroll-snap-type:x mandatory;
+  }
+  /* phantom spacers to center the first/last card */
+  .scroller::before,
+  .scroller::after{ content:""; display:block; width:calc((100vw - var(--card-w))/2); }
+
+  /* snap cards to the center on phones */
+  .card{ scroll-snap-align: center; }
+
+  /* nudge arrows inward and size them a bit smaller so nothing clips */
+  .nav-arrow{ width:42px; height:42px; }
+  .nav-arrow.left{ left:6px }
+  .nav-arrow.right{ right:6px }
+
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-  .form-grid{grid-template-columns:1fr}
 
   dialog#scanModal{padding:0}
   .scan-card{
