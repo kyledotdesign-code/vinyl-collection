@@ -1,13 +1,13 @@
 /* -------------------------------------------
-   Vinyl Collection — app.js (no Papa, no SW)
-   Adds UPC scanner → MusicBrainz lookup → Apps Script add
+   Vinyl Collection — app.js
+   Auto-start UPC scan; form-POST to Apps Script with CORS-friendly fallback
 --------------------------------------------*/
 
 // 0) CONFIG
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
 
-// Your Google Apps Script Web App URL (from your earlier message)
+// Your Google Apps Script Web App URL
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbwpf5emXEyiy-vTaq7bnZzOzC7TxFSy53XqO9mId1wTSze0m-KLxyrbnWRT0xohwK4TRg/exec";
 
@@ -36,8 +36,6 @@ const els = {
   scanVideo: $('#scanVideo'),
   scanCanvas: $('#scanCanvas'),
   scanHint: $('#scanHint'),
-  startScan: $('#startScan'),
-  stopScan: $('#stopScan'),
   manualUPC: $('#manualUPC'),
   closeScan: $('#closeScan'),
   scanStatus: $('#scanStatus'),
@@ -47,8 +45,8 @@ const els = {
 const state = {
   all: [],
   filtered: [],
-  sortKey: 'title', // 'title' | 'artist'
-  view: 'scroll',   // 'scroll' | 'grid'
+  sortKey: 'title',
+  view: 'scroll',
   // Scan
   mediaStream: null,
   scanning: false,
@@ -162,7 +160,6 @@ async function loadFromSheet(){
   }
 
   const { data } = parseCSV(text);
-
   const records = [];
   for (const row of data){
     const title  = pickField(row, HEADER_ALIASES.title);
@@ -176,13 +173,12 @@ async function loadFromSheet(){
     records.push({ title, artist, notes, genre, coverRaw, altRaw, upc, cover:"" });
   }
 
-  // Render fast with placeholders first
   state.all = records;
   state.filtered = [...records];
   applySort();
-  render();            // placeholders only
+  render();
   await resolveCovers(records, 6);
-  render();            // now swap to real covers where available
+  render();
 }
 async function resolveCovers(records, concurrency = 6){
   let i = 0;
@@ -190,9 +186,8 @@ async function resolveCovers(records, concurrency = 6){
     while (i < records.length){
       const idx = i++;
       const r = records[idx];
-      try{
-        r.cover = await chooseCover(r.coverRaw, r.altRaw);
-      }catch{ r.cover = ""; }
+      try{ r.cover = await chooseCover(r.coverRaw, r.altRaw); }
+      catch{ r.cover = ""; }
     }
   });
   await Promise.all(workers);
@@ -238,21 +233,18 @@ function createCard(rec){
   artistEl.textContent = artist;
   genreEl.textContent  = rec.genre ? `Genre: ${rec.genre}` : "";
   notesEl.textContent  = rec.notes || "";
-
   cTitle.textContent   = title;
   cArtist.textContent  = artist;
 
-  // start with placeholder
   const ph = placeholderFor(title, artist);
   imgEl.src = ph;
   imgEl.alt = `${title} — ${artist}`;
 
-  // swap to cover if available
   if (rec.cover){
     const real = new Image();
     real.referrerPolicy = 'no-referrer';
     real.onload = () => { imgEl.src = rec.cover; };
-    real.onerror = () => {}; // keep placeholder
+    real.onerror = () => {};
     real.src = rec.cover;
   }
 
@@ -377,7 +369,6 @@ els.statsBtn.addEventListener('click', openStats);
 
 // 12) UPC LOOKUP (MusicBrainz + Cover Art Archive)
 async function lookupByUPC(upc){
-  // MusicBrainz search by barcode
   const url = `https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r = await fetch(url, { headers: { 'Accept': 'application/json' }});
   if(!r.ok) throw new Error('MusicBrainz request failed');
@@ -385,7 +376,6 @@ async function lookupByUPC(upc){
   const releases = j?.releases || [];
   if (!releases.length) throw new Error('No releases found for that UPC');
 
-  // Heuristic: prefer releases with cover-art-archive present, or highest score
   releases.sort((a,b)=>{
     const ac = (a['cover-art-archive']?.front?1:0) - (b['cover-art-archive']?.front?1:0);
     if (ac !== 0) return -ac;
@@ -400,11 +390,8 @@ async function lookupByUPC(upc){
     .filter(Boolean)
     .join(', ') || (rel['artist-credit-phrase'] || '');
 
-  // Try to get cover art (front)
   let coverUrl = "";
   try{
-    // Cover Art Archive: direct front image (will 302 to actual image)
-    // Use a size param if available; otherwise, fetch JSON to get preferred.
     const artJson = await fetch(`https://coverartarchive.org/release/${mbid}`, {
       headers: { 'Accept': 'application/json' }
     });
@@ -413,7 +400,6 @@ async function lookupByUPC(upc){
       const front = (art.images||[]).find(img=>img.front) || art.images?.[0];
       coverUrl = front?.image || "";
     } else {
-      // fall back to standard front url
       coverUrl = `https://coverartarchive.org/release/${mbid}/front`;
     }
   }catch{ /* ignore */ }
@@ -423,15 +409,14 @@ async function lookupByUPC(upc){
     coverRaw: coverUrl || "",
     altRaw: "",
     notes: "",
-    genre: "", // unknown from MB; you can fill later
+    genre: "",
   };
 }
 
-// 13) ADD TO GOOGLE SHEET (Apps Script)
+// 13) ADD TO GOOGLE SHEET (Apps Script) — CORS-friendly
 async function addRecordToSheet(rec){
-  // Customize to your sheet column names in the script.
-  // This sends JSON { title, artist, upc, genre, notes, cover, alt }.
-  const payload = {
+  // Send as form-encoded to avoid preflight
+  const form = new URLSearchParams({
     title: rec.title || "",
     artist: rec.artist || "",
     upc: rec.upc || "",
@@ -439,39 +424,53 @@ async function addRecordToSheet(rec){
     notes: rec.notes || "",
     cover: rec.coverRaw || "",
     alt: rec.altRaw || "",
-  };
-
-  const resp = await fetch(APPS_SCRIPT_URL, {
-    method: 'POST',
-    mode: 'cors',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
   });
 
-  if(!resp.ok){
-    const t = await resp.text().catch(()=> "");
-    throw new Error(`Apps Script error (${resp.status}): ${t || 'Unknown error'}`);
+  try {
+    const resp = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: form.toString(),
+      // mode: 'cors' (default) — will succeed if your script returns ACAO header
+    });
+
+    // If server doesn't send CORS headers, browsers may still deliver an "opaque" response in some contexts.
+    // Try reading; if it fails, we still treat as sent.
+    let json = {};
+    try { json = await resp.clone().json(); } catch {}
+    if (!resp.ok && resp.type !== 'opaque') {
+      throw new Error(`Apps Script error (${resp.status})`);
+    }
+    return json;
+  } catch (e) {
+    // Fire-and-forget fallback when strict CORS blocks reads
+    try {
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: form, // URLSearchParams is fine
+      });
+      // We can't read the response in no-cors, but the request was sent.
+      return { opaque: true };
+    } catch (e2) {
+      throw e; // surface the original error
+    }
   }
-  // You may return the response JSON if your script echoes the row back
-  return resp.json().catch(()=> ({}));
 }
 
 // 14) OPTIMISTIC ADD + REFRESH
 async function addToCollection(rec){
-  // Prepare image cover
   rec.cover = await chooseCover(rec.coverRaw, rec.altRaw);
 
-  // Optimistically add to UI
+  // Optimistic UI
   state.all.unshift(rec);
   state.filtered = [...state.all];
   applySort();
   render();
 
-  // Persist to Sheet
   try{
     await addRecordToSheet(rec);
-    // Try to re-pull the sheet to stay in sync
-    // (optional; comment out if you prefer)
+    // optional: re-sync sheet
     // await loadFromSheet();
   }catch(e){
     console.error(e);
@@ -479,14 +478,10 @@ async function addToCollection(rec){
   }
 }
 
-// 15) SCANNER UI + LOGIC
+// 15) SCANNER (auto-start)
 async function startCamera(){
-  // Prefer environment/back camera
   const constraints = {
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 1280 }, height: { ideal: 720 }
-    },
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
     audio: false
   };
   state.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -495,18 +490,14 @@ async function startCamera(){
 }
 function stopCamera(){
   if (state.mediaStream){
-    for (const t of state.mediaStream.getTracks()){
-      t.stop();
-    }
+    for (const t of state.mediaStream.getTracks()){ t.stop(); }
     state.mediaStream = null;
   }
   els.scanVideo.pause();
   els.scanVideo.srcObject = null;
 }
-
 async function scanLoop(){
   if (!state.scanning) return;
-
   try{
     if (state.detector){
       const codes = await state.detector.detect(els.scanVideo);
@@ -514,22 +505,14 @@ async function scanLoop(){
         const upcRaw = (codes[0].rawValue || "").trim();
         if (upcRaw){
           await handleUPC(upcRaw);
-          return; // handled, stop scanning
+          return;
         }
       }
-    } else {
-      // Fallback: capture a frame and (optionally) run your own decode lib.
-      // For now, we stop here and ask for manual entry if detector unsupported.
     }
-  }catch(err){
-    console.error('scanLoop error', err);
-  }
-
+  }catch(err){ console.error('scanLoop error', err); }
   state.rafId = requestAnimationFrame(scanLoop);
 }
-
 async function handleUPC(upc){
-  // Stop scanning
   state.scanning = false;
   if (state.rafId) cancelAnimationFrame(state.rafId);
   stopCamera();
@@ -539,17 +522,38 @@ async function handleUPC(upc){
     const rec = await lookupByUPC(upc);
     els.scanStatus.textContent = `Found: ${rec.artist} — ${rec.title}. Adding…`;
     await addToCollection(rec);
-    els.scanStatus.textContent = `Added to your collection (and sent to Sheet).`;
+    els.scanStatus.textContent = `Added to your collection (sent to Sheet).`;
     setTimeout(()=> els.scanModal.close(), 600);
   }catch(e){
     console.error(e);
-    els.scanStatus.textContent = `Couldn’t find that UPC automatically. You can enter details manually later.`;
+    els.scanStatus.textContent = `Couldn’t find that UPC automatically. You can enter details manually.`;
   }
 }
-
-function openScanModal(){
+async function openScanModal(){
   els.scanStatus.textContent = '';
   els.scanModal.showModal();
+
+  try{
+    if (state.detectorSupported && !state.detector){
+      try{
+        state.detector = new window.BarcodeDetector({
+          formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39']
+        });
+      }catch{
+        state.detector = new window.BarcodeDetector();
+      }
+    }
+    await startCamera();
+    state.scanning = !!state.detectorSupported;
+    els.scanHint.textContent = state.detectorSupported
+      ? 'Point your camera at the barcode.'
+      : 'Camera started, but live scan not supported. Use “Enter UPC manually.”';
+
+    if (state.scanning) scanLoop();
+  }catch(e){
+    console.error(e);
+    els.scanStatus.textContent = 'Camera unavailable. Use “Enter UPC manually.”';
+  }
 }
 function closeScanModal(){
   state.scanning = false;
@@ -561,39 +565,6 @@ function closeScanModal(){
 // Events
 els.scanBtn.addEventListener('click', openScanModal);
 els.closeScan?.addEventListener('click', closeScanModal);
-
-els.startScan.addEventListener('click', async ()=>{
-  els.scanStatus.textContent = '';
-  try{
-    if (state.detectorSupported && !state.detector){
-      // We request common barcodes (UPC/EAN)
-      // Types are hints; browser chooses internally if not supported.
-      try{
-        state.detector = new window.BarcodeDetector({
-          formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39']
-        });
-      }catch{
-        // Some browsers require no formats in constructor
-        state.detector = new window.BarcodeDetector();
-      }
-    }
-    await startCamera();
-    state.scanning = true;
-    els.scanHint.textContent = 'Point your camera at the barcode.';
-    scanLoop();
-  }catch(e){
-    console.error(e);
-    els.scanStatus.textContent = 'Camera unavailable. You can enter UPC manually.';
-  }
-});
-
-els.stopScan.addEventListener('click', ()=>{
-  state.scanning = false;
-  if (state.rafId) cancelAnimationFrame(state.rafId);
-  stopCamera();
-  els.scanStatus.textContent = 'Stopped.';
-});
-
 els.manualUPC.addEventListener('click', async ()=>{
   const upc = prompt("Enter UPC (numbers only):") || "";
   const trimmed = upc.replace(/\D+/g,'').trim();
