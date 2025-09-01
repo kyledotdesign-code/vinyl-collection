@@ -244,6 +244,7 @@ function createCard(rec){
   const imgEl=node.querySelector('img.cover');
   const cTitle=node.querySelector('.caption-title');
   const cArtist=node.querySelector('.caption-artist');
+  const sleeve=node.querySelector('.sleeve');
 
   const title=rec.title||"Untitled"; const artist=rec.artist||"Unknown Artist";
   titleEl.textContent=title; artistEl.textContent=artist;
@@ -253,7 +254,18 @@ function createCard(rec){
   imgEl.src=placeholderFor(title,artist); imgEl.alt=`${title} — ${artist}`;
   if(rec.cover){ const real=new Image(); real.referrerPolicy='no-referrer';
     real.onload=()=>{ imgEl.src=rec.cover; }; real.onerror=()=>{}; real.src=rec.cover; }
-  node.addEventListener('click',()=>node.classList.toggle('flipped'));
+
+  // Tap = flip + light circle pulse
+  node.addEventListener('click',()=>{
+    node.classList.toggle('flipped');
+    if (sleeve){
+      sleeve.classList.remove('pulse'); // restart animation if tapped fast
+      // force reflow
+      void sleeve.offsetWidth;
+      sleeve.classList.add('pulse');
+    }
+  });
+
   return node;
 }
 
@@ -337,7 +349,7 @@ function toggleArrows(show){ els.prev.style.display=show?'':'none'; els.next.sty
 els.prev.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() - 1); });
 els.next.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() + 1); });
 
-/* Stats (trimmed for brevity; same as previous) */
+/* Stats (same logic as before, shortened here) */
 function buildStats(recs){
   const total=recs.length, artistMap=new Map(), genreMap=new Map();
   for(const r of recs){
