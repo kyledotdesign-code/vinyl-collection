@@ -449,7 +449,7 @@ async function startScanEngine(){
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   try{
     if (isMobile || !state.detectorSupported) {
-      els.scanHint.textContent = 'Scanning (ZXing)…';
+      els.scanHint.textContent = 'Scanning...';
       await startZXing();
     } else {
       await startBDCamera();
@@ -458,7 +458,7 @@ async function startScanEngine(){
         if (!state.handlingUPC && !state.usingZXing && els.scanModal.open) {
           console.warn('Falling back to ZXing after BD warmup timeout.');
           await stopScanEngines();
-          els.scanHint.textContent = 'Scanning (ZXing)…';
+          els.scanHint.textContent = 'Scanning...';
           await startZXing();
         }
       }, 4000);
@@ -468,7 +468,7 @@ async function startScanEngine(){
     // Final fallback: try ZXing if BD path failed
     if (!state.usingZXing) {
       try {
-        els.scanHint.textContent = 'Scanning (ZXing)…';
+        els.scanHint.textContent = 'Scanning...';
         await startZXing();
       } catch (e2) {
         console.error('ZXing also failed', e2);
