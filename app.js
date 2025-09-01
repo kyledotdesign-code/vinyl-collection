@@ -1,22 +1,17 @@
-/* -------------------------------------------
-   Vinyl Collection — app.js
-   - Search expands in header; auto-closes on scroll/outside click
-   - Width is capped so it never overlaps the title/logo
-   - Inverted FAB (white with black plus)
-   - Subtle vinyl circle on back face handled via CSS (no JS needed)
---------------------------------------------*/
+/* Vinyl Collection — app.js (same features; no logic changes needed for this UI pass)
+   - Uses published CSV + Apps Script URL
+   - Search UX, FAB, scan modal, vinyl circle back, etc.
+*/
 
-// 0) CONFIG
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
 
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbwmcZPZbg3-Cfev8OTt_YGIsrTZ3Lb_BZ2xQ5bRxh9Hpy9OvkYkOqeubtl1MQ4OGqZAJw/exec";
 
-// 1) ELEMENTS
 const $ = (s, r = document) => r.querySelector(s);
+
 const els = {
-  // Header + search
   header: document.querySelector('.site-header'),
   brandRow: document.querySelector('.brand-row'),
   brandBox: document.querySelector('.brand'),
@@ -24,7 +19,6 @@ const els = {
   searchToggle: $('#searchToggle'),
   searchClose: $('#searchClose'),
 
-  // View / controls
   viewScrollBtn: $('#view-scroll'),
   viewGridBtn: $('#view-grid'),
   sort: $('#sort'),
@@ -32,22 +26,18 @@ const els = {
   refresh: $('#refresh'),
   statsBtn: $('#statsBtn'),
 
-  // Lists
   scroller: $('#scroller'),
   grid: $('#grid'),
   prev: $('#scrollPrev'),
   next: $('#scrollNext'),
 
-  // Stats
   statsModal: $('#statsModal'),
   statsBody: $('#statsBody'),
 
-  // Templates and views
   cardTpl: $('#cardTpl'),
   scrollView: $('#scrollView'),
   gridView: $('#gridView'),
 
-  // Scan modal + form
   scanModal: $('#scanModal'),
   scanVideo: $('#scanVideo'),
   scanHint: $('#scanHint'),
@@ -61,19 +51,16 @@ const els = {
   formNotes: $('#formNotes'),
   saveRecord: $('#saveRecord'),
 
-  // FAB + menus
   fab: $('#fab'),
   fabMenu: $('#fabMenu'),
   fabScan: $('#fabScan'),
   fabEnter: $('#fabEnter'),
 
-  // Enter UPC modal
   enterUPCModal: $('#enterUPCModal'),
   enterUPCForm: $('#enterUPCForm'),
   enterUPCInput: $('#enterUPCInput'),
 };
 
-// 1a) Fixed header offset
 (function setHeaderOffset(){
   const header = document.querySelector('.site-header');
   const apply = () => { if (header) document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px'); };
@@ -82,12 +69,10 @@ const els = {
   if ('ResizeObserver' in window && header){ new ResizeObserver(apply).observe(header); } else { setTimeout(apply, 300); }
 })();
 
-// 1b) Compute max search width so it never collides with title/logo
 function updateSearchMax(){
   if (!els.brandRow || !els.brandBox || !els.header) return;
   const rowW = els.brandRow.getBoundingClientRect().width;
   const brandW = els.brandBox.getBoundingClientRect().width;
-  // Keep at least 12px gap to the brand, and room for the close icon (40px + 8 gap)
   const safeGap = 12 + 40 + 8;
   const max = Math.max(180, Math.floor(rowW - brandW - safeGap));
   document.documentElement.style.setProperty('--search-max', max + 'px');
@@ -95,7 +80,6 @@ function updateSearchMax(){
 window.addEventListener('resize', updateSearchMax);
 window.addEventListener('orientationchange', updateSearchMax);
 
-// 1c) Search icon → expand/collapse (auto-close on scroll / outside click)
 (function wireSearch(){
   if (!els.search || !els.searchToggle || !els.searchClose || !els.header) return;
 
@@ -108,7 +92,6 @@ window.addEventListener('orientationchange', updateSearchMax);
     updateSearchMax();
     setTimeout(()=> els.search.focus(), 60);
 
-    // click/touch outside → close
     outsideHandler = (ev) => {
       const container = els.header.querySelector('.search-inline');
       if (!container) return;
@@ -117,7 +100,6 @@ window.addEventListener('orientationchange', updateSearchMax);
     document.addEventListener('mousedown', outsideHandler);
     document.addEventListener('touchstart', outsideHandler, { passive:true });
 
-    // scroll → close
     scrollHandler = () => close();
     window.addEventListener('scroll', scrollHandler, { passive:true });
   };
@@ -125,7 +107,6 @@ window.addEventListener('orientationchange', updateSearchMax);
   const close = () => {
     els.header.classList.remove('search-open');
     els.searchToggle.setAttribute('aria-expanded','false');
-    // cleanup handlers
     if (outsideHandler){
       document.removeEventListener('mousedown', outsideHandler);
       document.removeEventListener('touchstart', outsideHandler);
@@ -141,14 +122,12 @@ window.addEventListener('orientationchange', updateSearchMax);
     if (!els.header.classList.contains('search-open')) open();
   });
   els.searchClose.addEventListener('click', close);
-  // ESC to close
   els.search.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') { close(); els.search.blur(); } });
 
-  // initial calc
   updateSearchMax();
 })();
 
-// 2) STATE
+/* ---------- Data + rendering ---------- */
 const state = {
   all: [], filtered: [],
   sortKey: 'title', view: 'scroll',
@@ -157,10 +136,8 @@ const state = {
   usingZXing:false, zxingReader:null, zxingControls:null,
   handlingUPC:false, pending:null,
 };
-
 const withBust = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
 
-// 3) CSV + helpers
 function parseCSV(text){
   const rows=[]; let cur=['']; let i=0,inQ=false;
   for(; i<text.length; i++){
@@ -207,13 +184,12 @@ async function chooseCover(coverRaw, altRaw){
 function placeholderFor(a,b){
   const letter=(b||a||"?").trim().charAt(0).toUpperCase()||"?";
   const svg=`<svg xmlns='http://www.w3.org/2000/svg' width='1000' height='1000'>
-    <rect width='100%' height='100%' fill='#121212'/><circle cx='500' cy='500' r='380' fill='#0b0b0b'/>
-    <text x='50%' y='56%' text-anchor='middle' font-family='Inter,Arial' font-size='420' font-weight='800' fill='#bfc3ca'>${letter}</text>
+    <rect width='100%' height='100%' fill='#12161c'/><circle cx='500' cy='500' r='380' fill='#0c1117'/>
+    <text x='50%' y='56%' text-anchor='middle' font-family='Inter,Arial' font-size='420' font-weight='800' fill='#c8ccd4'>${letter}</text>
   </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-// 4) Load & normalize
 async function loadFromSheet(forceFresh=false){
   const url = forceFresh ? withBust(SHEET_CSV) : SHEET_CSV;
   const res = await fetch(url, { cache:"no-store" });
@@ -249,7 +225,6 @@ async function resolveCovers(records,concurrency=6){
   }); await Promise.all(workers);
 }
 
-// 5) Render
 function createCard(rec){
   const tpl=els.cardTpl?.content?.firstElementChild;
   const node=tpl?tpl.cloneNode(true):document.createElement('article');
@@ -285,7 +260,6 @@ function createCard(rec){
   return node;
 }
 
-/* Center first card on phones */
 function centerFirstCardIfMobile(){
   const isMobile = window.matchMedia('(max-width: 720px)').matches;
   if (!isMobile || !els.scrollView.classList.contains('active')) return;
@@ -297,7 +271,6 @@ function centerFirstCardIfMobile(){
   });
 }
 
-/* Arrow nav */
 const cardsList = () => Array.from(els.scroller.querySelectorAll('.card'));
 function currentCenteredIndex(){
   const cards = cardsList();
@@ -341,7 +314,7 @@ function render(){
 window.addEventListener('resize', centerFirstCardIfMobile);
 window.addEventListener('orientationchange', centerFirstCardIfMobile);
 
-// 6) Search / Sort / Shuffle
+/* Search / Sort / Shuffle */
 function applySort(){
   const k=state.sortKey;
   state.filtered.sort((a,b)=> (a[k]||"").toLowerCase().localeCompare((b[k]||"").toLowerCase()));
@@ -360,16 +333,14 @@ els.shuffle.addEventListener('click',()=>{
   render();
 });
 
-// 7) View toggles
+/* View toggles + arrows */
 els.viewScrollBtn.addEventListener('click',()=>{ state.view='scroll'; render(); });
 els.viewGridBtn.addEventListener('click',()=>{ state.view='grid'; render(); });
-
-// 8) Arrows
 function toggleArrows(show){ els.prev.style.display=show?'':'none'; els.next.style.display=show?'':'none'; }
 els.prev.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() - 1); });
 els.next.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() + 1); });
 
-// 9) Stats
+/* Stats */
 function buildStats(recs){
   const total=recs.length, artistMap=new Map(), genreMap=new Map();
   for(const r of recs){
@@ -405,7 +376,7 @@ function openStats(){
 }
 els.statsBtn.addEventListener('click',openStats);
 
-// 10) UPC lookup + Save
+/* UPC lookup + save (unchanged) */
 async function lookupByUPC(upc){
   const url=`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r=await fetch(url,{ headers:{ 'Accept':'application/json' }});
@@ -455,7 +426,7 @@ async function addToCollection(rec){
   await addRecordToSheet(rec);
 }
 
-// 11) Scan engines (ZXing / BarcodeDetector)
+/* Scanning engines (unchanged) */
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
@@ -569,7 +540,6 @@ async function stopScanEngines(){
   state.usingZXing = false;
 }
 
-// 12) Modal open/close
 async function openScanModal(){
   els.scanStatus.textContent=''; state.pending=null; els.scanForm.reset(); els.formUPC.value=""; els.saveRecord.disabled=true;
   els.scanModal.showModal(); document.body.classList.add('modal-open');
@@ -579,7 +549,6 @@ async function openScanModal(){
 function closeScanModal(){ stopScanEngines(); els.scanModal.close(); document.body.classList.remove('modal-open'); }
 els.closeScan?.addEventListener('click',closeScanModal);
 
-// 13) After-detect flow
 async function handleUPC(upc){
   if (!els.scanModal.open) { await openScanModal(); }
   await stopScanEngines();
@@ -597,7 +566,6 @@ async function handleUPC(upc){
   } finally { state.handlingUPC = false; }
 }
 
-// 14) Submit form → save
 els.scanForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const upc=(els.formUPC.value||"").trim();
@@ -630,7 +598,7 @@ els.scanForm.addEventListener('submit', async (e)=>{
   }
 });
 
-// 15) Update Collection (hard resync)
+/* Update Collection */
 els.refresh?.addEventListener('click', async ()=>{
   if (els.scanModal?.open) closeScanModal();
   const originalText = els.refresh.textContent;
@@ -640,7 +608,7 @@ els.refresh?.addEventListener('click', async ()=>{
   finally { els.refresh.disabled = false; els.refresh.textContent = originalText; }
 });
 
-/* ===== FAB behavior ===== */
+/* FAB behavior */
 els.fab.addEventListener('click', ()=> { els.fabMenu.showModal(); });
 els.fabScan.addEventListener('click', async ()=>{
   els.fabMenu.close();
