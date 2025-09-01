@@ -1,5 +1,4 @@
 :root{
-  /* Lightened modern dark theme */
   --bg: #0b0e13;
   --bg2:#12161b;
   --fg: #f6f7f9;
@@ -13,8 +12,6 @@
   --header-h: 140px;
   --side-pad: clamp(12px, 3vw, 18px);
   --search-max: 640px;
-
-  /* NEW: shared gutter for mobile sheet edges */
   --sheet-gutter: clamp(12px, 4vw, 22px);
 }
 *{box-sizing:border-box}
@@ -30,7 +27,7 @@ body{
 }
 body.modal-open{overflow:hidden}
 
-/* Fixed header */
+/* Header */
 .site-header{
   position:fixed; top:0; left:0; right:0; z-index:1000;
   backdrop-filter: blur(10px);
@@ -38,8 +35,6 @@ body.modal-open{overflow:hidden}
   border-bottom:1px solid var(--border);
   padding: calc(12px + env(safe-area-inset-top, 0px)) clamp(12px,2vw,28px) 8px;
 }
-
-/* Title row + inline search */
 .brand-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .brand{ display:flex; align-items:center; gap:10px; min-width:0; }
 .brand .logo{
@@ -50,6 +45,7 @@ body.modal-open{overflow:hidden}
 }
 .brand h1{ margin:0; font-size:clamp(18px,2.4vw,24px); font-weight:800; letter-spacing:.3px; white-space:nowrap }
 
+/* Search inline */
 .search-inline{ display:flex; align-items:center; gap:8px; min-width:0; position:relative; }
 .icon-btn{
   display:inline-flex; align-items:center; justify-content:center;
@@ -58,7 +54,6 @@ body.modal-open{overflow:hidden}
   box-shadow:var(--shadow); cursor:pointer;
 }
 .icon-btn.close{ display:none; font-size:24px; line-height:1; padding-bottom:2px }
-
 .search-input{
   width:0; opacity:0; pointer-events:none; overflow:hidden;
   border:1px solid var(--border); background:#11161d; color:var(--fg);
@@ -77,14 +72,12 @@ body.modal-open{overflow:hidden}
 
 .controls{margin-top:10px}
 
-/* Buttons row */
+/* Buttons */
 .btn-row{
   margin-top:8px;display:flex;flex-wrap:nowrap;gap:10px;align-items:center;justify-content:flex-start;
   overflow-x:auto; -webkit-overflow-scrolling: touch; padding-bottom:6px;
 }
 .btn-row::-webkit-scrollbar{height:0}
-
-/* Buttons */
 .btn,.seg-btn,select.btn,a.btn{
   padding:12px 16px;border-radius:14px;border:1px solid var(--border);
   background:linear-gradient(180deg,#1a1f26,#13181e); color:var(--fg); cursor:pointer;
@@ -95,9 +88,7 @@ body.modal-open{overflow:hidden}
   display:inline-flex; align-items:center; justify-content:center;
   touch-action: manipulation; text-align:center;
 }
-select.btn{
-  appearance:none; text-align:center; text-align-last:center; -moz-text-align-last:center;
-}
+select.btn{ appearance:none; text-align:center; text-align-last:center; -moz-text-align-last:center; }
 .btn:hover,.seg-btn:hover{transform:translateY(-1px)}
 .btn:active,.seg-btn:active{transform:translateY(0)}
 .btn.small{padding:9px 12px;font-weight:700;font-size:14px}
@@ -105,7 +96,6 @@ select.btn{
 .btn.outline{background:transparent;border:1px solid #2f3742}
 .btn.subtle{background:#131921;border:1px solid #1f2530}
 
-/* Segmented toggle */
 .segmented{ display:inline-flex;background:#151a22;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px;flex:0 0 auto }
 .seg-btn{background:transparent;border:none;padding:8px 12px;border-radius:10px;white-space:nowrap}
 .seg-btn.active{background:#1a2029;border:1px solid #2e3641}
@@ -115,7 +105,7 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .view{display:none}
 .view.active{display:block}
 
-/* Scroll view + arrows */
+/* Scroller + arrows */
 .scroller-wrap{position:relative}
 .nav-arrow{
   position:absolute; top:50%; transform:translateY(-50%); z-index:5;
@@ -135,7 +125,6 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .chev-left{transform:rotate(-135deg)}
 .chev-right{transform:rotate(45deg)}
 
-/* Scroller + grid */
 .scroller{
   display:grid; grid-auto-flow:column; grid-auto-columns:minmax(340px, 460px);
   gap:20px; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x mandatory;
@@ -147,10 +136,8 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 
 /* Card */
 .card{ scroll-snap-align:start; scroll-snap-stop: always; background:var(--card); border:1px solid var(--border); border-radius:18px; padding:10px; box-shadow:var(--shadow) }
-.sleeve{
-  perspective:1200px; position:relative; width:100%; aspect-ratio:1/1; border-radius:12px; overflow:hidden;
-}
-/* vinyl “light circle” pulse on tap */
+.sleeve{ perspective:1200px; position:relative; width:100%; aspect-ratio:1/1; border-radius:12px; overflow:hidden }
+/* pulse */
 .sleeve::after{
   content:""; position:absolute; inset:0; margin:auto; width:72%; aspect-ratio:1/1; border-radius:50%;
   background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.18), rgba(255,255,255,0) 60%);
@@ -158,22 +145,14 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
   pointer-events:none; transition: opacity .25s ease, transform .25s ease;
 }
 .sleeve.pulse::after{ animation: vinylPulse .6s ease-out forwards; }
-@keyframes vinylPulse{
-  0%{ opacity:.25; transform: scale(.9); }
-  60%{ opacity:.12; transform: scale(1.02); }
-  100%{ opacity:0; transform: scale(1.1); }
-}
+@keyframes vinylPulse{ 0%{opacity:.25; transform:scale(.9)} 60%{opacity:.12; transform:scale(1.02)} 100%{opacity:0; transform:scale(1.1)} }
 
 .face{position:absolute;inset:0;backface-visibility:hidden;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
 .card.flipped .front{transform:rotateY(180deg)}
 .card.flipped .back{transform:rotateY(0deg)}
-
-/* Vinyl back face subtle circle */
-.back{
-  transform:rotateY(180deg); display:grid; place-items:center; background:#0f1318; position:relative;
-}
+.back{ transform:rotateY(180deg); display:grid; place-items:center; background:#0f1318; position:relative }
 .back::before{
-  content:""; position:absolute; inset:0; margin:auto; width:78%; aspect-ratio:1/1; border-radius:50%; pointer-events:none; z-index:0;
+  content:""; position:absolute; inset:0; margin:auto; width:78%; aspect-ratio:1/1; border-radius:50%;
   background:
     radial-gradient(circle at 50% 50%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.035) 42%, rgba(0,0,0,0) 62%),
     repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0 1px, rgba(0,0,0,0) 1px 4px);
@@ -193,18 +172,35 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .caption-title{font-weight:800;margin:0}
 .caption-artist{color:var(--muted);font-size:13px;margin:2px 0 6px}
 
-/* Stats modal */
+/* Stats modal — FIXED */
 dialog#statsModal{border:none;padding:0;background:transparent}
 dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
-.stats-card{max-width:720px;width:min(92vw,720px);border:none;border-radius:16px;padding:18px;background:#131821;color:var(--fg);box-shadow:var(--shadow)}
-.stats-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.stats-body{display:grid;gap:14px}
+.stats-card{
+  max-width:820px;width:min(94vw,820px);
+  border:none;border-radius:18px;padding:18px;background:#131821;color:var(--fg);box-shadow:var(--shadow)
+}
+.stats-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.stats-head h2{margin:0;font-size:28px}
+.stats-body{display:grid;gap:16px}
+.stat-grid{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px
+}
+.stat-tile{
+  background:linear-gradient(180deg,#161c25,#10151c);
+  border:1px solid var(--border); border-radius:14px; padding:14px; display:grid; gap:6px; text-align:center
+}
+.stat-tile > div:first-child{color:#c8ced8}
+.stat-big{font-size:30px;font-weight:800;color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  background:#142549;border:1px solid #20335d;color:#cfe2ff;padding:6px 10px;border-radius:999px;font-weight:800;
+  max-width:100%; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;
+}
 
-/* Scan modal (desktop / tablet default) */
+/* Scan modal */
 dialog#scanModal{border:none; padding:0; background:transparent; inset:0;}
 dialog#scanModal[open]{display:flex; align-items:center; justify-content:center;}
 dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.55)}
-
 .scan-card{
   box-sizing:border-box;
   width: min(860px, calc(100vw - 24px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
@@ -213,9 +209,7 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
   overflow:hidden;
   border:none;border-radius:16px;background:#131821;color:var(--fg);box-shadow:var(--shadow);
   display:flex;flex-direction:column;gap:12px;
-  padding: calc(14px + env(safe-area-inset-top,0px))
-           var(--side-pad)
-           calc(28px + env(safe-area-inset-bottom,0px));
+  padding: calc(14px + env(safe-area-inset-top,0px)) var(--side-pad) calc(28px + env(safe-area-inset-bottom,0px));
 }
 .scan-head{
   position:sticky; top:0; z-index:2;
@@ -224,31 +218,16 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
   padding:0 0 8px;
 }
 .scan-actions{display:flex;gap:8px;flex-wrap:nowrap}
-.video-wrap{
-  position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0b1016;flex:0 0 auto;
-  padding:10px; max-width: 100%;
-}
-.video-wrap video{
-  display:block;width:100%;
-  max-height:46svh;
-  aspect-ratio: 4 / 3; object-fit:cover; background:#000;
-  border-radius:10px;
-}
+.video-wrap{ position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0b1016;flex:0 0 auto; padding:10px; max-width: 100% }
+.video-wrap video{ display:block;width:100%; max-height:46svh; aspect-ratio:4/3; object-fit:cover; background:#000; border-radius:10px }
 .scan-overlay{position:absolute;inset:10px;display:grid;place-items:center;pointer-events:none}
-.scan-frame{
-  position:relative; width:100%; height:min(34svh, 300px);
-  border:2px solid rgba(255,255,255,.85); border-radius:10px;
-  box-shadow: 0 0 0 9999px rgba(0,0,0,.45) inset;
-}
-.scan-frame::after{
-  content:""; position:absolute; left:10%; right:10%; height:2px; top:10%;
-  background:rgba(255,255,255,.9); border-radius:2px; animation:sweep 2.2s ease-in-out infinite;
-}
-@keyframes sweep{ 0%{ top:10% } 50%{ top:calc(100% - 10%) } 100%{ top:10% } }
+.scan-frame{ position:relative; width:100%; height:min(34svh, 300px); border:2px solid rgba(255,255,255,.85); border-radius:10px; box-shadow:0 0 0 9999px rgba(0,0,0,.45) inset }
+.scan-frame::after{ content:""; position:absolute; left:10%; right:10%; height:2px; top:10%; background:rgba(255,255,255,.9); border-radius:2px; animation:sweep 2.2s ease-in-out infinite }
+@keyframes sweep{ 0%{top:10%} 50%{top:calc(100% - 10%)} 100%{top:10%} }
 .scan-hint{ position:absolute;left:18px;bottom:16px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px; backdrop-filter: blur(3px)}
 .scan-status{margin-top:6px;color:#d9ecff}
 
-/* Form */
+/* Form in scan */
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px; padding:0 var(--side-pad) 12px}
 .form-grid label{display:grid;gap:6px}
 .form-grid label.wide{grid-column:1 / -1}
@@ -261,7 +240,7 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
   margin-top:8px;
 }
 
-/* Inverted FAB (white) */
+/* FAB */
 .fab{
   position:fixed; z-index:1200;
   right: calc(16px + env(safe-area-inset-right,0px));
@@ -275,7 +254,7 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 .fab:active{ transform: translateY(0) }
 .fab-plus{font-size:34px; line-height:1; transform: translateY(-1px)}
 
-/* FAB menu sheet */
+/* FAB sheet */
 #fabMenu{border:none;padding:0;background:transparent}
 #fabMenu[open]{display:grid; place-items:end center}
 #fabMenu::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
@@ -285,7 +264,6 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
   background:#131821;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow)
 }
 #fabMenu .sheet-title{margin:0 0 12px;font-size:18px;color:#fff}
-#fabMenu .sheet-title span{color:#fff}
 #fabMenu .sheet .sheet-actions{display:grid; gap:14px; margin-bottom:18px;}
 #fabMenu .sheet .sheet-close{margin-top:4px}
 
@@ -298,11 +276,11 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
   background:#131821;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow);
   display:grid; gap:12px;
 }
-.enter-form h3{margin:0 0 2px; color:#fff;} /* white title */
+.enter-form h3{margin:0 0 2px; color:#fff;}
 #enterUPCInput{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#0f141b;color:#fff;font-size:16px;text-align:center}
 .enter-actions{display:flex;gap:10px;justify-content:flex-end}
 
-/* Mobile polish (bottom sheet behavior) */
+/* Mobile specifics */
 @media (max-width: 720px){
   .btn-row{justify-content:flex-start}
   main{padding: calc(var(--header-h) + 10px) 12px 20px}
@@ -322,11 +300,10 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 
-  /* Make scan modal a full-width bottom sheet with matching gutters */
+  /* Scan as bottom sheet with equal gutters */
   dialog#scanModal[open]{ align-items:flex-end; }
   .scan-card{
     border-radius:16px;
-    /* same gutter on left/right & bottom, safe-area aware */
     width: calc(100vw - var(--sheet-gutter) - var(--sheet-gutter)
                  - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));
     margin: 0 var(--sheet-gutter) calc(var(--sheet-gutter) + env(safe-area-inset-bottom,0px));
