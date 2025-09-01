@@ -205,7 +205,11 @@ els.search.addEventListener('input',(e)=>{
 });
 els.sort.addEventListener('change',()=>{ state.sortKey=els.sort.value||'title'; applySort(); render(); });
 els.shuffle.addEventListener('click',()=>{
-  for(let i=state.filtered.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [state.filtered[i],state.filtered[j]]=[state.filtered[j]],state.filtered[i]]; }
+  for(let i=state.filtered.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    // FIXED: proper array swap (no stray bracket)
+    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
+  }
   render();
 });
 
