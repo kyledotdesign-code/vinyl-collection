@@ -1,4 +1,4 @@
-/* Vinyl Collection — app.js */
+/* Vinyl Collection — app.js (with subtle vinyl circle on flip) */
 
 const SHEET_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJ7Jiw68O2JXlYMFddNYg7z622NoOjJ0Iz6A0yWT6afvrftLnc-OrN7loKD2W7t7PDbqrJpzLjtKDu/pub?output=csv";
@@ -67,7 +67,7 @@ const els = {
   if ('ResizeObserver' in window && header){ new ResizeObserver(apply).observe(header); } else { setTimeout(apply, 300); }
 })();
 
-/* Search max width calculation */
+/* Search max width calc */
 function updateSearchMax(){
   if (!els.brandRow || !els.brandBox || !els.header) return;
   const rowW = els.brandRow.getBoundingClientRect().width;
@@ -166,6 +166,7 @@ function pickField(row, keys){
   for(const key of keys){ if(map[key]){ const v=row[map[key]]; if(v && String(v).trim()) return String(v).trim(); } }
   return "";
 }
+const looksLikeImg = (u) => /\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(u||"");
 function wsrv(url){ return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`; }
 async function fromWikipediaPage(u){
   const m=u.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i); if(!m) return "";
@@ -176,8 +177,8 @@ async function fromWikipediaPage(u){
 }
 async function chooseCover(coverRaw, altRaw){
   const c=coverRaw||altRaw||""; if(!c) return "";
+  if (looksLikeImg(c)) return wsrv(c);
   if(/wikipedia\.org\/wiki\//i.test(c)){ const img=await fromWikipediaPage(c); return img?wsrv(img):""; }
-  if(/^https?:\/\//i.test(c)) return wsrv(c);
   return "";
 }
 function placeholderFor(a,b){
@@ -334,7 +335,7 @@ els.sort.addEventListener('change',()=>{ state.sortKey=els.sort.value||'title'; 
 els.shuffle.addEventListener('click',()=>{
   for(let i=state.filtered.length-1;i>0;i--){
     const j=Math.floor(Math.random()*(i+1));
-    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]]; // fixed swap
+    [state.filtered[i], state.filtered[j]] = [state.filtered[j], state.filtered[i]];
   }
   render();
 });
@@ -346,7 +347,7 @@ function toggleArrows(show){ els.prev.style.display=show?'':'none'; els.next.sty
 els.prev.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() - 1); });
 els.next.addEventListener('click',()=>{ scrollToIndex(currentCenteredIndex() + 1); });
 
-/* Stats — totals + chips */
+/* Stats */
 function buildStats(recs){
   const total=recs.length, artistMap=new Map(), genreMap=new Map();
   for(const r of recs){
@@ -364,7 +365,6 @@ function openStats(){
   const s=buildStats(state.filtered);
   const body=els.statsBody; body.innerHTML='';
 
-  // Totals grid
   const grid=document.createElement('div'); grid.className='stat-grid';
   grid.innerHTML=`
     <div class="stat-tile"><div>Total Albums</div><div class="stat-big">${s.total}</div></div>
@@ -373,7 +373,6 @@ function openStats(){
   `;
   body.appendChild(grid);
 
-  // Top Artists chips
   if (s.topArtists.length){
     const h=document.createElement('h3'); h.textContent='Top Artists'; body.appendChild(h);
     const chips=document.createElement('div'); chips.className='chips';
@@ -383,7 +382,6 @@ function openStats(){
     body.appendChild(chips);
   }
 
-  // Top Genres chips
   if (s.topGenres.length){
     const h=document.createElement('h3'); h.textContent='Top Genres'; body.appendChild(h);
     const chips=document.createElement('div'); chips.className='chips';
@@ -397,7 +395,7 @@ function openStats(){
 }
 els.statsBtn.addEventListener('click',openStats);
 
-/* UPC lookup + save (unchanged) */
+/* UPC lookup & saving */
 async function lookupByUPC(upc){
   const url=`https://musicbrainz.org/ws/2/release/?query=barcode:${encodeURIComponent(upc)}&fmt=json`;
   const r=await fetch(url,{ headers:{ 'Accept':'application/json' }});
@@ -444,7 +442,7 @@ async function addToCollection(rec){
   await addRecordToSheet(rec);
 }
 
-/* Scanner */
+/* Scanner (ZXing fallback + BarcodeDetector) */
 async function loadZXing(){
   if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
     return {
