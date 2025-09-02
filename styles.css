@@ -152,16 +152,15 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .card.flipped .front{transform:rotateY(180deg)}
 .card.flipped .back{transform:rotateY(0deg)}
 
-/* BACK face with subtle vinyl circle behind info */
+/* BACK face — fill same size as front cover */
 .back{
   transform:rotateY(180deg);
-  display:grid; place-items:center; background:#0f1318; position:relative;
-
-  /* NEW: padding ensures the inner “square” can cover the whole back with comfortable insets */
-  padding: clamp(8px, 2vw, 14px);
+  display:grid; place-items:stretch;     /* make the child fill */
+  background:#0f1318; position:relative;
+  padding: 0;                             /* IMPORTANT: remove padding so sizes match */
 }
 
-/* the vinyl circle + grooves */
+/* vinyl circle behind info */
 .back::before{
   content:"";
   position:absolute; inset:0; margin:auto;
@@ -193,23 +192,19 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
   opacity:.18; pointer-events:none;
 }
 
-/* NEW: full-cover info panel (“square”) with generous padding */
+/* Full-cover info panel that matches the front cover’s size */
 .back .meta{
-  position:relative; z-index:1;
-
-  /* Make it cover the back face neatly with inner padding */
-  width:100%;
-  height:100%;
-  border-radius:14px;
+  position:absolute; inset:0;             /* fill exactly like the front image */
+  z-index:1;
 
   /* Semi-transparent so the vinyl circle subtly shows through */
   background: rgba(19,24,33,.86);
   backdrop-filter: blur(2px);
 
   border: 1px solid rgba(255,255,255,.06);
+  border-radius: 12px;                     /* matches .sleeve rounding */
   padding: clamp(14px, 3.2vw, 24px);
 
-  /* Layout for text */
   display:grid;
   align-content:center;
   justify-items:center;
