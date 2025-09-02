@@ -152,14 +152,14 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .card.flipped .front{transform:rotateY(180deg)}
 .card.flipped .back{transform:rotateY(0deg)}
 
-/* BACK face — fill same size as front cover */
+/* BACK face — fill EXACTLY like the front */
 .back{
   transform:rotateY(180deg);
-  display:grid; place-items:stretch;     /* make the child fill */
-  background:#0f1318; position:relative;
-  padding: 0;                             /* IMPORTANT: remove padding so sizes match */
+  position:relative;
+  display:block;
+  background:#0f1318;
+  padding:0;                /* no inset */
 }
-
 /* vinyl circle behind info */
 .back::before{
   content:"";
@@ -192,30 +192,29 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
   opacity:.18; pointer-events:none;
 }
 
-/* Full-cover info panel that matches the front cover’s size */
+/* FULL-BLEED info layer that matches the front image area */
 .back .meta{
-  position:absolute; inset:0;             /* fill exactly like the front image */
+  position:absolute; inset:0;           /* fill the sleeve exactly */
   z-index:1;
+  box-sizing:border-box;
+  border-radius:12px;                   /* same as .sleeve */
+  border:1px solid rgba(255,255,255,.06);
+  background:rgba(19,24,33,.86);
+  backdrop-filter:blur(2px);
+  padding:clamp(14px, 3.2vw, 24px);
 
-  /* Semi-transparent so the vinyl circle subtly shows through */
-  background: rgba(19,24,33,.86);
-  backdrop-filter: blur(2px);
-
-  border: 1px solid rgba(255,255,255,.06);
-  border-radius: 12px;                     /* matches .sleeve rounding */
-  padding: clamp(14px, 3.2vw, 24px);
-
-  display:grid;
-  align-content:center;
-  justify-items:center;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
   gap:10px;
   text-align:center;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
+  overflow:hidden;                      /* trims inside glow to edges */
 }
 
 .front .cover{width:100%;height:100%;object-fit:cover;display:block;background:#0a0e13}
 
-/* Meta + caption */
+/* Meta + caption (text styles) */
 .meta .title{font-size:16px;margin:0 0 6px}
 .meta .artist{margin:0;color:var(--muted)}
 .meta .genre{margin:10px 0 0;color:var(--accent-2);font-weight:800}
