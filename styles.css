@@ -1,6 +1,6 @@
 /* ==============================
    Vinyl Collection – styles.css
-   (scan modal top/bottom unclipped + vinyl circle)
+   (polish pack + scan fixes + vinyl circle)
    ============================== */
 
 :root{
@@ -19,15 +19,15 @@
   --search-max: 640px;
   --sheet-gutter: clamp(12px, 4vw, 22px);
 
-  /* --- Vinyl circle controls --- */
+  /* Vinyl circle */
   --vinyl-size: 88%;
   --vinyl-op: .28;
   --vinyl-groove-alpha: .06;
   --vinyl-glow-alpha: .10;
 
-  /* --- Scan modal controls --- */
-  --scan-pad: 14px;                /* equal padding around video & frame */
-  --scan-max-h-desktop: calc(92svh - 28px); /* keep whole modal visible on short viewports */
+  /* Scan modal */
+  --scan-pad: 14px;
+  --scan-max-h-desktop: calc(92svh - 28px);
 }
 
 *{box-sizing:border-box}
@@ -41,9 +41,13 @@ body{
   color:var(--fg);
   -webkit-tap-highlight-color: transparent;
 }
+:focus-visible{ outline: 3px solid #8ad1ff; outline-offset: 2px; border-radius: 8px }
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration:.01ms !important; animation-iteration-count:1 !important; transition:none !important; scroll-behavior:auto !important; }
+}
 body.modal-open{overflow:hidden}
 
-/* -------- Header (sticky) -------- */
+/* Header */
 .site-header{
   position:fixed; top:0; left:0; right:0; z-index:1000;
   backdrop-filter: blur(10px);
@@ -86,7 +90,7 @@ body.modal-open{overflow:hidden}
 
 .controls{margin-top:10px}
 
-/* -------- Buttons -------- */
+/* Buttons */
 .btn-row{
   margin-top:8px;display:flex;flex-wrap:nowrap;gap:10px;align-items:center;justify-content:flex-start;
   overflow-x:auto; -webkit-overflow-scrolling: touch; padding-bottom:6px;
@@ -111,12 +115,21 @@ select.btn{ appearance:none; text-align:center; text-align-last:center; -moz-tex
 .seg-btn{background:transparent;border:none;padding:8px 12px;border-radius:10px;white-space:nowrap}
 .seg-btn.active{background:#1a2029;border:1px solid #2e3641}
 
-/* -------- Layout -------- */
+/* Layout */
 main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .view{display:none}
 .view.active{display:block}
 
-/* -------- Scroller -------- */
+/* Genre chips bar */
+.chipbar{ display:flex; flex-wrap:nowrap; gap:8px; padding:4px 2px 2px; overflow:auto }
+.chipbar::-webkit-scrollbar{height:0}
+.chip{
+  background:#1a212b; color:#dfe7ff; border:1px solid #2a3542;
+  padding:6px 10px; border-radius:999px; font-weight:800; cursor:pointer; white-space:nowrap;
+}
+.chip.active{ background:#213049; border-color:#2f4b77 }
+
+/* Scroller */
 .scroller-wrap{position:relative}
 .nav-arrow{
   position:absolute; top:50%; transform:translateY(-50%); z-index:5;
@@ -146,10 +159,11 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 
 .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:16px; padding:8px 4px 24px; }
 
-/* -------- Card + Sleeve -------- */
+/* Card */
 .card{
   scroll-snap-align:start; scroll-snap-stop: always;
-  background:var(--card); border:1px solid var(--border); border-radius:18px; padding:10px; box-shadow:var(--shadow)
+  background:var(--card); border:1px solid var(--border); border-radius:18px; padding:10px; box-shadow:var(--shadow);
+  content-visibility:auto;
 }
 .sleeve{
   perspective:1200px; position:relative; width:100%; aspect-ratio:1/1; border-radius:12px; overflow:hidden;
@@ -158,235 +172,124 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
   position:absolute; inset:0; backface-visibility:hidden; transform-style:preserve-3d;
   transition:transform .5s cubic-bezier(.2,.7,.2,1);
 }
-/* FRONT */
-.front .cover{
-  width:100%; height:100%; object-fit:cover; display:block; background:#0a0e13;
+.front .cover{ width:100%; height:100%; object-fit:cover; display:block; background:#0a0e13; }
+.share-btn{
+  position:absolute; right:10px; bottom:10px; z-index:2;
+  width:36px; height:36px; border-radius:10px; border:1px solid rgba(255,255,255,.2);
+  background:rgba(0,0,0,.35); color:#fff; backdrop-filter: blur(4px); cursor:pointer;
 }
-/* BACK (full-bleed info) */
-.back{
-  transform:rotateY(180deg);
-  background:#0f1318;
-  isolation:isolate;
-}
+.back{ transform:rotateY(180deg); background:#0f1318; isolation:isolate; }
 .card.flipped .front{transform:rotateY(180deg)}
 .card.flipped .back{ transform:rotateY(0deg) }
 
-/* --- Vinyl circle behind info --- */
+/* Vinyl circle */
 .back::before{
-  content:"";
-  position:absolute; inset:0; margin:auto;
-  width:var(--vinyl-size); aspect-ratio:1/1; border-radius:50%;
+  content:""; position:absolute; inset:0; margin:auto; width:var(--vinyl-size); aspect-ratio:1/1; border-radius:50%;
   background:
     radial-gradient(circle at 50% 50%,
       rgba(255,255,255,var(--vinyl-glow-alpha)) 0%,
       rgba(255,255,255,calc(var(--vinyl-glow-alpha) * .5)) 38%,
-      rgba(0,0,0,0) 64%
-    ),
+      rgba(0,0,0,0) 64%),
     repeating-radial-gradient(circle at 50% 50%,
       rgba(255,255,255,var(--vinyl-groove-alpha)) 0 1px,
-      rgba(0,0,0,0) 1px 4px
-    );
-  opacity:0; transition: opacity .35s ease;
-  filter: blur(.2px);
-  box-shadow:
-    inset 0 0 0 2px rgba(255,255,255,.02),
-    0 40px 100px rgba(0,0,0,.35);
+      rgba(0,0,0,0) 1px 4px);
+  opacity:0; transition: opacity .35s ease; filter: blur(.2px);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.02), 0 40px 100px rgba(0,0,0,.35);
   z-index:1;
 }
 .card.flipped .back::before{ opacity: var(--vinyl-op); }
 
-/* FULL-BLEED INFO PANEL */
+/* Back info */
 .back .meta{
   position:absolute; inset:0; z-index:2;
-  box-sizing:border-box;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   gap:10px; text-align:center;
   padding:clamp(14px, 3.2vw, 24px);
-  border-radius:12px;
-  border:1px solid rgba(255,255,255,.06);
-  background:rgba(19,24,33,.86);
-  color:var(--fg);
-  pointer-events:auto;
+  border-radius:12px; border:1px solid rgba(255,255,255,.06);
+  background:rgba(19,24,33,.86); color:var(--fg);
 }
-
-/* Text inside the info panel */
 .meta .title{font-size:16px;margin:0 0 6px; font-weight:800}
 .meta .artist{margin:0;color:var(--muted)}
 .meta .genre{margin:10px 0 0;color:var(--accent-2);font-weight:800}
 .meta .notes{margin:8px 0 0;color:#d3d7df;font-size:13px}
 
-/* Caption below sleeve */
 .caption{text-align:center;padding:8px 6px 2px}
 .caption-title{font-weight:800;margin:0}
 .caption-artist{color:var(--muted);font-size:13px;margin:2px 0 6px}
 
-/* tap pulse on the front */
+/* Tap pulse */
 .sleeve::after{
   content:""; position:absolute; inset:0; margin:auto; width:72%; aspect-ratio:1/1; border-radius:50%;
   background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.18), rgba(255,255,255,0) 60%);
-  opacity:0; transform: scale(.9);
-  pointer-events:none; transition: opacity .25s ease, transform .25s ease;
+  opacity:0; transform: scale(.9); pointer-events:none; transition: opacity .25s ease, transform .25s ease;
 }
 .sleeve.pulse::after{ animation:vinylPulse .6s ease-out forwards; }
 @keyframes vinylPulse{ 0%{opacity:.25; transform:scale(.9)} 60%{opacity:.12; transform:scale(1.02)} 100%{opacity:0; transform:scale(1.1)} }
 
-/* -------- Stats modal -------- */
-dialog#statsModal{border:none;padding:0;background:transparent}
-dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
-.stats-card{
-  max-width:820px;width:min(94vw,820px);
-  border:none;border-radius:18px;padding:18px;background:#131821;color:var(--fg);box-shadow:var(--shadow)
-}
+/* Stats/scan dialogs */
+dialog#statsModal, dialog#scanModal, dialog#fabMenu, dialog#enterUPCModal{border:none;padding:0;background:transparent}
+dialog#statsModal::backdrop, dialog#scanModal::backdrop, dialog#fabMenu::backdrop, dialog#enterUPCModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
+
+.stats-card{ max-width:820px;width:min(94vw,820px); border:none;border-radius:18px;padding:18px;background:#131821;color:var(--fg);box-shadow:var(--shadow) }
 .stats-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.stats-head h2{margin:0;font-size:28px}
 .stats-body{display:grid;gap:16px}
 .stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.stat-tile{
-  background:linear-gradient(180deg,#161c25,#10151c);
-  border:1px solid var(--border); border-radius:14px; padding:14px; display:grid; gap:6px; text-align:center
-}
+.stat-tile{ background:linear-gradient(180deg,#161c25,#10151c); border:1px solid var(--border); border-radius:14px; padding:14px; display:grid; gap:6px; text-align:center }
 .stat-tile > div:first-child{color:#c8ced8}
 .stat-big{font-size:30px;font-weight:800;color:var(--accent)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{
-  background:#142549;border:1px solid #20335d;color:#cfe2ff;padding:6px 10px;border-radius:999px;font-weight:800;
-  max-width:100%; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;
-}
+.chips .chip{cursor:pointer}
 
-/* -------- Scan modal / Enter UPC / FAB -------- */
-dialog#scanModal{border:none; padding:0; background:transparent; inset:0;}
-dialog#scanModal[open]{display:flex; align-items:center; justify-content:center;}
-dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.55)}
+/* Scan modal card */
+#scanModal[open]{display:flex; align-items:center; justify-content:center;}
 .scan-card{
   box-sizing:border-box;
   width: min(860px, calc(100vw - 24px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
   max-width: 100%;
-  margin: 12px auto;
-  overflow:auto;                                 /* <— allow scroll if needed */
-  max-height: var(--scan-max-h-desktop);         /* <— keep full card onscreen */
+  margin: 12px auto; overflow:auto; max-height: var(--scan-max-h-desktop);
   border:none;border-radius:16px;background:#131821;color:var(--fg);box-shadow:var(--shadow);
   display:flex;flex-direction:column;gap:12px;
   padding: calc(14px + env(safe-area-inset-top,0px)) var(--side-pad) calc(28px + env(safe-area-inset-bottom,0px));
 }
-
-/* Sticky header row inside the modal */
-.scan-head{
-  position:sticky; top:0; z-index:2;
-  display:flex;align-items:center;justify-content:space-between;gap:10px;
-  background:linear-gradient(180deg, #131821 92%, rgba(19,24,33,0));
-  padding:0 0 8px;
-}
-
+.scan-head{ position:sticky; top:0; z-index:2; display:flex;align-items:center;justify-content:space-between;gap:10px; background:linear-gradient(180deg, #131821 92%, rgba(19,24,33,0)); padding:0 0 8px; }
 .scan-actions{display:flex;gap:8px;flex-wrap:nowrap}
 
-/* Camera area */
-.video-wrap{
-  position:relative;
-  border:1px solid var(--border);
-  border-radius:12px;
-  overflow:hidden;
-  background:#0b1016;
-  flex:0 0 auto;
-  padding: var(--scan-pad);                      /* <— equal gutters all around */
-  max-width: 100%;
-}
-.video-wrap video{
-  display:block;
-  width:100%;
-  max-height: min(52svh, 520px);                /* <— taller but still safe */
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
-  background:#000;
-  border-radius:10px;
-}
-
-/* The white rounded frame aligns to the padding, not the edges */
-.scan-overlay{
-  position:absolute;
-  left: var(--scan-pad);
-  right: var(--scan-pad);
-  top: var(--scan-pad);
-  bottom: var(--scan-pad);
-  display:grid; place-items:center;
-  pointer-events:none;
-}
-.scan-frame{
-  width:100%;
-  height:100%;                                   /* <— fills overlay box */
-  border:2px solid rgba(255,255,255,.88);
-  border-radius:10px;
-  box-shadow:0 0 0 9999px rgba(0,0,0,.45) inset;
-}
-/* moving scan line stays inside the frame */
-.scan-frame::after{
-  content:"";
-  position:absolute;
-  left:8%; right:8%;
-  height:2px; top:12%;
-  background:rgba(255,255,255,.9);
-  border-radius:2px;
-  animation:sweep 2.2s ease-in-out infinite;
-}
+.video-wrap{ position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0b1016;flex:0 0 auto; padding: var(--scan-pad); max-width: 100% }
+.video-wrap video{ display:block;width:100%; max-height: min(52svh, 520px); aspect-ratio: 4 / 3; object-fit: cover; background:#000; border-radius:10px }
+.scan-overlay{ position:absolute; left:var(--scan-pad); right:var(--scan-pad); top:var(--scan-pad); bottom:var(--scan-pad); display:grid; place-items:center; pointer-events:none }
+.scan-frame{ width:100%; height:100%; border:2px solid rgba(255,255,255,.88); border-radius:10px; box-shadow:0 0 0 9999px rgba(0,0,0,.45) inset }
+.scan-frame::after{ content:""; position:absolute; left:10%; right:10%; height:2px; top:12%; background:rgba(255,255,255,.9); border-radius:2px; animation:sweep 2.2s ease-in-out infinite }
 @keyframes sweep{ 0%{top:12%} 50%{top:calc(100% - 12%)} 100%{top:12%} }
-
-.scan-hint{
-  position:absolute;left:calc(var(--scan-pad) + 4px);bottom:calc(var(--scan-pad) + 4px);
-  background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px; backdrop-filter: blur(3px)
-}
+.scan-hint{ position:absolute;left:calc(var(--scan-pad) + 4px);bottom:calc(var(--scan-pad) + 4px);background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px; backdrop-filter: blur(3px)}
 .scan-status{margin-top:6px;color:#d9ecff}
 
-/* Form in scan */
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px; padding:0 var(--side-pad) 12px}
 .form-grid label{display:grid;gap:6px}
 .form-grid label.wide{grid-column:1 / -1}
 .form-grid input,.form-grid textarea{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#0f141b;color:#fff;font-size:16px}
 .form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px}
-.form-actions.sticky{
-  position:sticky; bottom:0; z-index:1;
-  padding:12px 0 calc(16px + env(safe-area-inset-bottom,0px));
-  background:linear-gradient(180deg, rgba(19,24,33,0), rgba(19,24,33,1) 40%);
-  margin-top:8px;
-}
+.form-actions.sticky{ position:sticky; bottom:0; z-index:1; padding:12px 0 calc(16px + env(safe-area-inset-bottom,0px)); background:linear-gradient(180deg, rgba(19,24,33,0), rgba(19,24,33,1) 40%); margin-top:8px }
 
-/* -------- FAB & sheets -------- */
-.fab{
-  position:fixed; z-index:1200;
-  right: calc(16px + env(safe-area-inset-right,0px));
-  bottom: calc(18px + env(safe-area-inset-bottom,0px));
-  width:64px; height:64px; border-radius:999px;
-  border:1px solid #e6e6e6; background:#ffffff; color:#000;
-  box-shadow: 0 16px 38px rgba(255,255,255,.06), 0 12px 28px rgba(0,0,0,.45);
-  display:inline-flex; align-items:center; justify-content:center;
-}
-.fab:hover{ transform: translateY(-1px) }
-.fab:active{ transform: translateY(0) }
-.fab-plus{font-size:34px; line-height:1; transform: translateY(-1px)}
-
-#fabMenu{border:none;padding:0;background:transparent}
+/* FAB + sheets */
+.fab{ position:fixed; z-index:1200; right: calc(16px + env(safe-area-inset-right,0px)); bottom: calc(18px + env(safe-area-inset-bottom,0px)); width:64px; height:64px; border-radius:999px; border:1px solid #e6e6e6; background:#ffffff; color:#000; box-shadow: 0 16px 38px rgba(255,255,255,.06), 0 12px 28px rgba(0,0,0,.45); display:inline-flex; align-items:center; justify-content:center }
+.fab:hover{ transform: translateY(-1px) } .fab:active{ transform: translateY(0) } .fab-plus{font-size:34px; line-height:1; transform: translateY(-1px)}
 #fabMenu[open]{display:grid; place-items:end center}
-#fabMenu::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
-#fabMenu .sheet{
-  width:min(92vw,420px);
-  margin:0 auto 0;
-  background:#131821;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow)
-}
+#fabMenu .sheet{ width:min(92vw,420px); margin:0 auto 0; background:#131821;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow) }
 #fabMenu .sheet-title{margin:0 0 12px;font-size:18px;color:#fff}
 #fabMenu .sheet .sheet-actions{display:grid; gap:14px; margin-bottom:18px;}
-#fabMenu .sheet .sheet-close{margin-top:4px}
-
-#enterUPCModal{border:none;padding:0;background:transparent}
 #enterUPCModal[open]{display:grid; place-items:center}
-#enterUPCModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
-.enter-form{
-  width:min(92vw,420px);
-  background:#131821;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow);
-  display:grid; gap:12px;
-}
+.enter-form{ width:min(92vw,420px); background:#131821;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow); display:grid; gap:12px; }
 .enter-form h3{margin:0 0 2px; color:#fff;}
 #enterUPCInput{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#0f141b;color:#fff;font-size:16px;text-align:center}
 .enter-actions{display:flex;gap:10px;justify-content:flex-end}
 
-/* -------- Mobile tweaks -------- */
+/* Toast */
+.toast-wrap{ position:fixed; z-index:1400; left:50%; transform:translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom,0px)); display:grid; gap:8px; width:min(92vw,680px); pointer-events:none }
+.toast{ pointer-events:auto; background:#121820; border:1px solid #2a313d; color:#eaf2ff; border-radius:12px; padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:12px; box-shadow: var(--shadow) }
+.toast .actions{ display:flex; gap:8px }
+.toast .link{ color:#bcd7ff; text-decoration:underline; background:none; border:none; cursor:pointer; padding:0 4px; }
+
+/* Mobile tweaks */
 @media (max-width: 720px){
   .btn-row{justify-content:flex-start}
   main{padding: calc(var(--header-h) + 10px) 12px 20px}
@@ -406,12 +309,10 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 
-  /* Scan as bottom sheet with equal gutters */
-  dialog#scanModal[open]{ align-items:flex-end; }
+  #scanModal[open]{ align-items:flex-end; }
   .scan-card{
     border-radius:16px;
-    width: calc(100vw - var(--sheet-gutter) - var(--sheet-gutter)
-                 - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));
+    width: calc(100vw - var(--sheet-gutter) - var(--sheet-gutter) - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));
     margin: 0 var(--sheet-gutter) calc(var(--sheet-gutter) + env(safe-area-inset-bottom,0px));
     padding: 14px var(--sheet-gutter) calc(18px + env(safe-area-inset-bottom,0px));
     max-height: calc(100svh - var(--sheet-gutter) - env(safe-area-inset-top,0px));
@@ -420,7 +321,5 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 
   .video-wrap{ padding: max(12px, var(--scan-pad)) }
   .video-wrap video{ max-height: min(46svh, 420px) }
-
   .scan-frame::after{ left:10%; right:10%; }
-  .scan-hint{font-size:14px}
 }
