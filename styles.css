@@ -1,11 +1,16 @@
+/* ==============================
+   Vinyl Collection – styles.css
+   (Restores back-face info panel)
+   ============================== */
+
 :root{
   --bg: #0b0e13;
   --bg2:#12161b;
-  --fg: #f6f7f9;
-  --muted: #b3b7bf;
+  --fg: #f5f7fb;
+  --muted: #c2c7d0;
   --card: #14171b;
   --accent: #a9d7ff;
-  --accent-2: #88e6bf;
+  --accent-2: #8de4c1;
   --border: #242a33;
   --shadow: 0 12px 34px rgba(0,0,0,.45);
 
@@ -14,10 +19,10 @@
   --search-max: 640px;
   --sheet-gutter: clamp(12px, 4vw, 22px);
 
-  /* Vinyl circle tuning */
   --vinyl-size: 84%;
   --vinyl-op: .22;
 }
+
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
@@ -31,7 +36,7 @@ body{
 }
 body.modal-open{overflow:hidden}
 
-/* Header (sticky) */
+/* -------- Header (sticky) -------- */
 .site-header{
   position:fixed; top:0; left:0; right:0; z-index:1000;
   backdrop-filter: blur(10px);
@@ -74,7 +79,7 @@ body.modal-open{overflow:hidden}
 
 .controls{margin-top:10px}
 
-/* Buttons */
+/* -------- Buttons -------- */
 .btn-row{
   margin-top:8px;display:flex;flex-wrap:nowrap;gap:10px;align-items:center;justify-content:flex-start;
   overflow-x:auto; -webkit-overflow-scrolling: touch; padding-bottom:6px;
@@ -86,7 +91,7 @@ body.modal-open{overflow:hidden}
   font-weight:700; font-size:15px; letter-spacing:.2px;
   transition:transform .06s ease, background .2s ease, border-color .2s ease;
   box-shadow:var(--shadow); text-decoration:none;
-  display:inline-flex; align-items:center; justify-content:center; touch-action: manipulation; text-align:center;
+  display:inline-flex; align-items:center; justify-content:center; text-align:center;
 }
 select.btn{ appearance:none; text-align:center; text-align-last:center; -moz-text-align-last:center; }
 .btn:hover,.seg-btn:hover{transform:translateY(-1px)}
@@ -95,17 +100,16 @@ select.btn{ appearance:none; text-align:center; text-align-last:center; -moz-tex
 .btn.wide{width:100%}
 .btn.outline{background:transparent;border:1px solid #2f3742}
 .btn.subtle{background:#131921;border:1px solid #1f2530}
-
 .segmented{ display:inline-flex;background:#151a22;border:1px solid var(--border);border-radius:12px;padding:4px;gap:4px;flex:0 0 auto }
 .seg-btn{background:transparent;border:none;padding:8px 12px;border-radius:10px;white-space:nowrap}
 .seg-btn.active{background:#1a2029;border:1px solid #2e3641}
 
-/* Layout */
+/* -------- Layout -------- */
 main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .view{display:none}
 .view.active{display:block}
 
-/* Scroller + arrows */
+/* -------- Scroller -------- */
 .scroller-wrap{position:relative}
 .nav-arrow{
   position:absolute; top:50%; transform:translateY(-50%); z-index:5;
@@ -132,36 +136,35 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
   -ms-overflow-style: none; scrollbar-width: none;
 }
 .scroller::-webkit-scrollbar{display:none}
+
 .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:16px; padding:8px 4px 24px; }
 
-/* Card */
-.card{ scroll-snap-align:start; scroll-snap-stop: always; background:var(--card); border:1px solid var(--border); border-radius:18px; padding:10px; box-shadow:var(--shadow) }
-.sleeve{ perspective:1200px; position:relative; width:100%; aspect-ratio:1/1; border-radius:12px; overflow:hidden }
-
-/* tap pulse on the front */
-.sleeve::after{
-  content:""; position:absolute; inset:0; margin:auto; width:72%; aspect-ratio:1/1; border-radius:50%;
-  background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.18), rgba(255,255,255,0) 60%);
-  opacity:0; transform: scale(.9);
-  pointer-events:none; transition: opacity .25s ease, transform .25s ease;
+/* -------- Card + Sleeve -------- */
+.card{
+  scroll-snap-align:start; scroll-snap-stop: always;
+  background:var(--card); border:1px solid var(--border); border-radius:18px; padding:10px; box-shadow:var(--shadow)
 }
-.sleeve.pulse::after{ animation: vinylPulse .6s ease-out forwards; }
-@keyframes vinylPulse{ 0%{opacity:.25; transform:scale(.9)} 60%{opacity:.12; transform:scale(1.02)} 100%{opacity:0; transform:scale(1.1)} }
-
-.face{position:absolute;inset:0;backface-visibility:hidden;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
-.card.flipped .front{transform:rotateY(180deg)}
-.card.flipped .back{transform:rotateY(0deg)}
-
-/* BACK face — fill EXACTLY like the front cover */
+.sleeve{
+  perspective:1200px; position:relative; width:100%; aspect-ratio:1/1; border-radius:12px; overflow:hidden;
+}
+.face{
+  position:absolute; inset:0; backface-visibility:hidden; transform-style:preserve-3d;
+  transition:transform .5s cubic-bezier(.2,.7,.2,1);
+}
+/* FRONT */
+.front .cover{
+  width:100%; height:100%; object-fit:cover; display:block; background:#0a0e13;
+}
+/* BACK (full-bleed info restored) */
 .back{
   transform:rotateY(180deg);
-  position:relative;
-  display:block;
   background:#0f1318;
-  padding:0;                /* ensure no inset */
+  isolation:isolate;              /* ensures ::before goes under .meta */
 }
+.card.flipped .front{transform:rotateY(180deg)}
+.card.flipped .back{ transform:rotateY(0deg) }
 
-/* subtle vinyl circle */
+/* Subtle vinyl circle underlay */
 .back::before{
   content:"";
   position:absolute; inset:0; margin:auto;
@@ -176,69 +179,50 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
       rgba(255,255,255,0.04) 0 1px,
       rgba(0,0,0,0) 1px 4px
     );
-  filter: blur(0.25px);
-  opacity:0;
-  transition: opacity .35s ease;
+  opacity:0; transition: opacity .35s ease;
   box-shadow:
     inset 0 0 0 2px rgba(255,255,255,.02),
     0 40px 100px rgba(0,0,0,.35);
+  z-index:1;
 }
 .card.flipped .back::before{ opacity: var(--vinyl-op); }
-/* tiny center label */
-.back::after{
-  content:"";
-  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-  width:10px; height:10px; border-radius:50%;
-  background: radial-gradient(circle, rgba(255,255,255,.22), rgba(0,0,0,.1));
-  opacity:.18; pointer-events:none;
-}
 
-/* FULL-BLEED info layer that matches the front image area */
+/* FULL-BLEED INFO PANEL */
 .back .meta{
-  position:absolute; inset:0;                 /* fill the sleeve 1:1 */
-  z-index:1;
+  position:absolute; inset:0; z-index:2;            /* sit above the circle */
   box-sizing:border-box;
-  width:100%; height:100%;
-  border-radius:12px;                         /* same as .sleeve */
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:10px; text-align:center;
+  padding:clamp(14px, 3.2vw, 24px);
+  border-radius:12px;
   border:1px solid rgba(255,255,255,.06);
   background:rgba(19,24,33,.86);
-  backdrop-filter:blur(2px);
-  padding:clamp(14px, 3.2vw, 24px);
-
-  display:grid;
-  align-content:center;
-  justify-items:center;
-  gap:10px;
-  text-align:center;
-  overflow:hidden;
+  color:var(--fg);                                   /* ensure readable */
+  pointer-events:auto;
 }
 
-/* ---------- HARD RESET inside the back info so old pill styles can't leak ---------- */
-.back .meta > *{
-  background:transparent !important;
-  border:0 !important;
-  box-shadow:none !important;
-  border-radius:0 !important;
-  padding:0 !important;
-  margin:0 !important;
-  line-height:1.25;
-}
+/* Text inside the info panel */
+.meta .title{font-size:16px;margin:0 0 6px; font-weight:800}
+.meta .artist{margin:0;color:var(--muted)}
+.meta .genre{margin:10px 0 0;color:var(--accent-2);font-weight:800}
+.meta .notes{margin:8px 0 0;color:#d3d7df;font-size:13px}
 
-/* Re-apply our intended spacing/colors after the reset */
-.back .meta .title{font-size:16px;margin:0 0 6px !important}
-.back .meta .artist{margin:0 !important;color:var(--muted)}
-.back .meta .genre{margin:10px 0 0 !important;color:var(--accent-2);font-weight:800}
-.back .meta .notes{margin:8px 0 0 !important;color:#c2c6ce;font-size:13px}
-
-/* Front image */
-.front .cover{width:100%;height:100%;object-fit:cover;display:block;background:#0a0e13}
-
-/* Caption under sleeve */
+/* Caption below sleeve */
 .caption{text-align:center;padding:8px 6px 2px}
 .caption-title{font-weight:800;margin:0}
 .caption-artist{color:var(--muted);font-size:13px;margin:2px 0 6px}
 
-/* Stats modal */
+/* tap pulse on the front (unchanged) */
+.sleeve::after{
+  content:""; position:absolute; inset:0; margin:auto; width:72%; aspect-ratio:1/1; border-radius:50%;
+  background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.18), rgba(255,255,255,0) 60%);
+  opacity:0; transform: scale(.9);
+  pointer-events:none; transition: opacity .25s ease, transform .25s ease;
+}
+.sleeve.pulse::after{ animation:vinylPulse .6s ease-out forwards; }
+@keyframes vinylPulse{ 0%{opacity:.25; transform:scale(.9)} 60%{opacity:.12; transform:scale(1.02)} 100%{opacity:0; transform:scale(1.1)} }
+
+/* -------- Stats modal (unchanged visually) -------- */
 dialog#statsModal{border:none;padding:0;background:transparent}
 dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
 .stats-card{
@@ -261,7 +245,7 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.
   max-width:100%; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;
 }
 
-/* Scan modal */
+/* -------- Scan modal / Enter UPC / FAB (kept) -------- */
 dialog#scanModal{border:none; padding:0; background:transparent; inset:0;}
 dialog#scanModal[open]{display:flex; align-items:center; justify-content:center;}
 dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.55)}
@@ -291,7 +275,6 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 .scan-hint{ position:absolute;left:18px;bottom:16px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px; backdrop-filter: blur(3px)}
 .scan-status{margin-top:6px;color:#d9ecff}
 
-/* Form in scan */
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px; padding:0 var(--side-pad) 12px}
 .form-grid label{display:grid;gap:6px}
 .form-grid label.wide{grid-column:1 / -1}
@@ -304,7 +287,6 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
   margin-top:8px;
 }
 
-/* FAB */
 .fab{
   position:fixed; z-index:1200;
   right: calc(16px + env(safe-area-inset-right,0px));
@@ -318,7 +300,6 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 .fab:active{ transform: translateY(0) }
 .fab-plus{font-size:34px; line-height:1; transform: translateY(-1px)}
 
-/* FAB sheet */
 #fabMenu{border:none;padding:0;background:transparent}
 #fabMenu[open]{display:grid; place-items:end center}
 #fabMenu::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
@@ -331,7 +312,6 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 #fabMenu .sheet .sheet-actions{display:grid; gap:14px; margin-bottom:18px;}
 #fabMenu .sheet .sheet-close{margin-top:4px}
 
-/* Enter UPC modal */
 #enterUPCModal{border:none;padding:0;background:transparent}
 #enterUPCModal[open]{display:grid; place-items:center}
 #enterUPCModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
@@ -344,7 +324,7 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 #enterUPCInput{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#0f141b;color:#fff;font-size:16px;text-align:center}
 .enter-actions{display:flex;gap:10px;justify-content:flex-end}
 
-/* Mobile specifics */
+/* -------- Mobile tweaks -------- */
 @media (max-width: 720px){
   .btn-row{justify-content:flex-start}
   main{padding: calc(var(--header-h) + 10px) 12px 20px}
@@ -364,7 +344,6 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
 
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 
-  /* Scan as bottom sheet with equal gutters */
   dialog#scanModal[open]{ align-items:flex-end; }
   .scan-card{
     border-radius:16px;
@@ -378,66 +357,3 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
   .scan-frame{height:min(32svh, 280px)}
   .scan-hint{font-size:14px}
 }
-
-/* === HOTFIX: make back face full-bleed & stop the "pill" clipping === */
-.card .sleeve { position: relative; }
-
-.card .sleeve .face { position: absolute; inset: 0; width: 100%; height: 100%; }
-
-.card .sleeve .face.back {
-  transform: rotateY(180deg);
-  background: #0f1318;
-  padding: 0 !important;          /* no inset that could shrink area */
-}
-
-/* Full-bleed info layer */
-.card .sleeve .face.back > .meta{
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  box-sizing: border-box !important;
-
-  display: grid !important;
-  align-content: center !important;
-  justify-items: center !important;
-  gap: 10px !important;
-  text-align: center !important;
-
-  background: rgba(19,24,33,.86) !important;
-  border: 1px solid rgba(255,255,255,.06) !important;
-  border-radius: 12px !important;
-  padding: clamp(14px, 3.2vw, 24px) !important;
-
-  overflow: hidden !important;
-  z-index: 1 !important;
-}
-
-/* Vinyl circle underlay stays subtle */
-.card.flipped .sleeve .face.back::before{ opacity: .22 !important; }
-
-/* Nuke legacy "pill" styles on the inner text */
-.card .sleeve .face.back > .meta > *{
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-}
-
-/* Restore our intended spacing/colors after the reset */
-.card .sleeve .face.back > .meta .title{ font-size:16px; margin: 0 0 6px !important; }
-.card .sleeve .face.back > .meta .artist{ margin: 0 !important; color: var(--muted); }
-.card .sleeve .face.back > .meta .genre{ margin: 10px 0 0 !important; color: var(--accent-2); font-weight: 800; }
-.card .sleeve .face.back > .meta .notes{ margin: 8px 0 0 !important; color: #c2c6ce; font-size: 13px; }
-
-/* Keep the front cover truly edge-to-edge */
-.card .sleeve .face.front img.cover{ width:100%; height:100%; object-fit:cover; display:block; background:#0a0e13 }
-
-/* (Optional) If mobile scroll alignment was drifting, keep centered snaps tight */
-@media (max-width: 720px){
-  .scroller{ scroll-snap-type: x mandatory; }
-  .card{ scroll-snap-align: center; scroll-snap-stop: always; }
-}
-
