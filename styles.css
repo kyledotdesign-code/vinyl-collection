@@ -378,3 +378,66 @@ dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.5
   .scan-frame{height:min(32svh, 280px)}
   .scan-hint{font-size:14px}
 }
+
+/* === HOTFIX: make back face full-bleed & stop the "pill" clipping === */
+.card .sleeve { position: relative; }
+
+.card .sleeve .face { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.card .sleeve .face.back {
+  transform: rotateY(180deg);
+  background: #0f1318;
+  padding: 0 !important;          /* no inset that could shrink area */
+}
+
+/* Full-bleed info layer */
+.card .sleeve .face.back > .meta{
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+
+  display: grid !important;
+  align-content: center !important;
+  justify-items: center !important;
+  gap: 10px !important;
+  text-align: center !important;
+
+  background: rgba(19,24,33,.86) !important;
+  border: 1px solid rgba(255,255,255,.06) !important;
+  border-radius: 12px !important;
+  padding: clamp(14px, 3.2vw, 24px) !important;
+
+  overflow: hidden !important;
+  z-index: 1 !important;
+}
+
+/* Vinyl circle underlay stays subtle */
+.card.flipped .sleeve .face.back::before{ opacity: .22 !important; }
+
+/* Nuke legacy "pill" styles on the inner text */
+.card .sleeve .face.back > .meta > *{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Restore our intended spacing/colors after the reset */
+.card .sleeve .face.back > .meta .title{ font-size:16px; margin: 0 0 6px !important; }
+.card .sleeve .face.back > .meta .artist{ margin: 0 !important; color: var(--muted); }
+.card .sleeve .face.back > .meta .genre{ margin: 10px 0 0 !important; color: var(--accent-2); font-weight: 800; }
+.card .sleeve .face.back > .meta .notes{ margin: 8px 0 0 !important; color: #c2c6ce; font-size: 13px; }
+
+/* Keep the front cover truly edge-to-edge */
+.card .sleeve .face.front img.cover{ width:100%; height:100%; object-fit:cover; display:block; background:#0a0e13 }
+
+/* (Optional) If mobile scroll alignment was drifting, keep centered snaps tight */
+@media (max-width: 720px){
+  .scroller{ scroll-snap-type: x mandatory; }
+  .card{ scroll-snap-align: center; scroll-snap-stop: always; }
+}
+
