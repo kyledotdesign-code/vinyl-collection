@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=polish-2025-09-07">
+  <link rel="stylesheet" href="/styles.css?v=one-card-arrows">
 </head>
 <body>
   <header class="site-header">
@@ -25,9 +25,7 @@
 
       <!-- inline search -->
       <div class="search-inline">
-        <button class="icon-btn" id="openSearch" aria-label="Search" title="Search">
-          🔎
-        </button>
+        <button class="icon-btn" id="openSearch" aria-label="Search" title="Search">🔎</button>
         <input id="search" class="search-input" type="search" placeholder="Search title, artist, genre, notes…" autocomplete="off" />
         <button class="icon-btn close" id="closeSearch" aria-label="Close search" title="Close">✕</button>
       </div>
@@ -48,8 +46,7 @@
         <button id="shuffle" class="btn">Shuffle</button>
         <button id="refresh" class="btn">Update Collection</button>
 
-        <button id="missingBtn" class="btn subtle" title="Show only entries without artwork">Missing Covers</button>
-        <button id="exportBtn" class="btn outline" title="Export current view to CSV">Export CSV</button>
+        <!-- removed Missing Covers button by request -->
 
         <a id="sheetLink" class="btn"
            href="https://docs.google.com/spreadsheets/d/1wNsjoZ5UcucOrTUokWfETyx_C5xMKtwWZ7LeDjdi6sI/edit?usp=sharing"
@@ -104,7 +101,7 @@
     <div class="sheet">
       <h3 class="sheet-title">Add Vinyl</h3>
       <div class="sheet-actions">
-        <button id="fabScan" class="btn wide">Scan UPC</button>
+        <button id="fabScan" class="btn wide">Scan</button>
         <button id="fabEnter" class="btn wide">Enter UPC Code</button>
       </div>
       <form method="dialog" class="sheet-close">
@@ -172,13 +169,12 @@
     </form>
   </dialog>
 
-  <!-- Card template -->
+  <!-- Card template (Share button removed) -->
   <template id="cardTpl">
     <article class="card" role="listitem" tabindex="0" aria-label="Album">
       <div class="sleeve" aria-live="polite">
         <div class="face front">
           <img class="cover" alt="" loading="lazy" referrerpolicy="no-referrer">
-          <button class="share-btn" title="Share">⤴</button>
         </div>
         <div class="face back">
           <div class="meta">
@@ -196,9 +192,8 @@
     </article>
   </template>
 
-  <!-- Toasts -->
   <div id="toastWrap" class="toast-wrap" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="/app.js?v=polish-2025-09-07"></script>
+  <script src="/app.js?v=one-card-arrows"></script>
 </body>
 </html>
