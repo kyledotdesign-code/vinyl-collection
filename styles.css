@@ -152,15 +152,16 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .card.flipped .front{transform:rotateY(180deg)}
 .card.flipped .back{transform:rotateY(0deg)}
 
-/* BACK face — fill EXACTLY like the front */
+/* BACK face — fill EXACTLY like the front cover */
 .back{
   transform:rotateY(180deg);
   position:relative;
   display:block;
   background:#0f1318;
-  padding:0;                /* no inset */
+  padding:0;                /* ensure no inset */
 }
-/* vinyl circle behind info */
+
+/* subtle vinyl circle */
 .back::before{
   content:"";
   position:absolute; inset:0; margin:auto;
@@ -194,27 +195,29 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 
 /* FULL-BLEED info layer that matches the front image area */
 .back .meta{
-  position:absolute; inset:0;           /* fill the sleeve exactly */
+  position:absolute; inset:0;                 /* fill the sleeve 1:1 */
   z-index:1;
   box-sizing:border-box;
-  border-radius:12px;                   /* same as .sleeve */
+  width:100%; height:100%;
+  border-radius:12px;                         /* same as .sleeve */
   border:1px solid rgba(255,255,255,.06);
   background:rgba(19,24,33,.86);
   backdrop-filter:blur(2px);
   padding:clamp(14px, 3.2vw, 24px);
 
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
+  display:grid;
+  align-content:center;
+  justify-items:center;
   gap:10px;
   text-align:center;
-  overflow:hidden;                      /* trims inside glow to edges */
+  overflow:hidden;                            /* trims inside glow to edges */
 }
 
-.front .cover{width:100%;height:100%;object-fit:cover;display:block;background:#0a0e13}
+/* Guard: kill any accidental backgrounds on children that could create a “pill” look */
+.back .meta > *{ background: transparent !important; }
 
-/* Meta + caption (text styles) */
+/* Text */
+.front .cover{width:100%;height:100%;object-fit:cover;display:block;background:#0a0e13}
 .meta .title{font-size:16px;margin:0 0 6px}
 .meta .artist{margin:0;color:var(--muted)}
 .meta .genre{margin:10px 0 0;color:var(--accent-2);font-weight:800}
