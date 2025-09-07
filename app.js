@@ -176,9 +176,27 @@ async function fromWikipediaPage(u){
        return j?.originalimage?.source || j?.thumbnail?.source || ""; }catch{ return ""; }
 }
 async function chooseCover(coverRaw, altRaw){
-  const c=coverRaw||altRaw||""; if(!c) return "";
-  if (looksLikeImg(c)) return wsrv(c);
-  if(/wikipedia\.org\/wiki\//i.test(c)){ const img=await fromWikipediaPage(c); return img?wsrv(img):""; }
+  const candidate = coverRaw || altRaw || "";
+  if (!candidate) return "";
+
+  // 1) Wikipedia File pages → resolve to the actual image URL
+  if (/wikipedia\.org\/wiki\/File:/i.test(candidate)){
+    const direct = fromWikipediaFile(candidate);
+    return direct ? wsrv(direct) : "";
+  }
+
+  // 2) Direct image URLs
+  if (looksLikeImage(candidate)){
+    return wsrv(candidate);
+  }
+
+  // 3) Wikipedia article pages → lead image from REST summary
+  if (/wikipedia\.org\/wiki\//i.test(candidate)){
+    const img = await fromWikipediaPage(candidate);
+    return img ? wsrv(img) : "";
+  }
+
+  // 4) Unknown/unsupported links
   return "";
 }
 function placeholderFor(a,b){
