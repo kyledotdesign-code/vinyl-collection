@@ -20,10 +20,10 @@
   --sheet-gutter: clamp(12px, 4vw, 22px);
 
   /* --- Vinyl circle controls --- */
-  --vinyl-size: 88%;          /* diameter relative to sleeve */
-  --vinyl-op: .28;            /* overall opacity when flipped */
-  --vinyl-groove-alpha: .06;  /* groove line strength */
-  --vinyl-glow-alpha: .10;    /* outer glow strength */
+  --vinyl-size: 95%;          /* diameter relative to sleeve */
+  --vinyl-op: 50%;            /* overall opacity when flipped */
+  --vinyl-groove-alpha: 45%;  /* groove line strength */
+  --vinyl-glow-alpha: .08;    /* outer glow strength */
 }
 
 *{box-sizing:border-box}
