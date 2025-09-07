@@ -1,6 +1,6 @@
 /* ==============================
    Vinyl Collection – styles.css
-   (Restores back-face info panel)
+   (Back-face info restored + vinyl circle tuning)
    ============================== */
 
 :root{
@@ -19,8 +19,11 @@
   --search-max: 640px;
   --sheet-gutter: clamp(12px, 4vw, 22px);
 
-  --vinyl-size: 84%;
-  --vinyl-op: .22;
+  /* --- Vinyl circle controls --- */
+  --vinyl-size: 88%;          /* diameter relative to sleeve */
+  --vinyl-op: .28;            /* overall opacity when flipped */
+  --vinyl-groove-alpha: .06;  /* groove line strength */
+  --vinyl-glow-alpha: .10;    /* outer glow strength */
 }
 
 *{box-sizing:border-box}
@@ -155,31 +158,33 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .front .cover{
   width:100%; height:100%; object-fit:cover; display:block; background:#0a0e13;
 }
-/* BACK (full-bleed info restored) */
+/* BACK (full-bleed info) */
 .back{
   transform:rotateY(180deg);
   background:#0f1318;
-  isolation:isolate;              /* ensures ::before goes under .meta */
+  isolation:isolate;              /* keep ::before under .meta */
 }
 .card.flipped .front{transform:rotateY(180deg)}
 .card.flipped .back{ transform:rotateY(0deg) }
 
-/* Subtle vinyl circle underlay */
+/* --- Vinyl circle behind info (tunable) --- */
 .back::before{
   content:"";
   position:absolute; inset:0; margin:auto;
   width:var(--vinyl-size); aspect-ratio:1/1; border-radius:50%;
+  /* soft glow + subtle grooves */
   background:
     radial-gradient(circle at 50% 50%,
-      rgba(255,255,255,0.08) 0%,
-      rgba(255,255,255,0.045) 42%,
+      rgba(255,255,255,var(--vinyl-glow-alpha)) 0%,
+      rgba(255,255,255,calc(var(--vinyl-glow-alpha) * .5)) 38%,
       rgba(0,0,0,0) 64%
     ),
     repeating-radial-gradient(circle at 50% 50%,
-      rgba(255,255,255,0.04) 0 1px,
+      rgba(255,255,255,var(--vinyl-groove-alpha)) 0 1px,
       rgba(0,0,0,0) 1px 4px
     );
   opacity:0; transition: opacity .35s ease;
+  filter: blur(.2px);
   box-shadow:
     inset 0 0 0 2px rgba(255,255,255,.02),
     0 40px 100px rgba(0,0,0,.35);
@@ -189,7 +194,7 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 
 /* FULL-BLEED INFO PANEL */
 .back .meta{
-  position:absolute; inset:0; z-index:2;            /* sit above the circle */
+  position:absolute; inset:0; z-index:2;
   box-sizing:border-box;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   gap:10px; text-align:center;
@@ -197,7 +202,7 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
   border-radius:12px;
   border:1px solid rgba(255,255,255,.06);
   background:rgba(19,24,33,.86);
-  color:var(--fg);                                   /* ensure readable */
+  color:var(--fg);
   pointer-events:auto;
 }
 
@@ -212,7 +217,7 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .caption-title{font-weight:800;margin:0}
 .caption-artist{color:var(--muted);font-size:13px;margin:2px 0 6px}
 
-/* tap pulse on the front (unchanged) */
+/* tap pulse on the front */
 .sleeve::after{
   content:""; position:absolute; inset:0; margin:auto; width:72%; aspect-ratio:1/1; border-radius:50%;
   background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.18), rgba(255,255,255,0) 60%);
@@ -222,7 +227,7 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .sleeve.pulse::after{ animation:vinylPulse .6s ease-out forwards; }
 @keyframes vinylPulse{ 0%{opacity:.25; transform:scale(.9)} 60%{opacity:.12; transform:scale(1.02)} 100%{opacity:0; transform:scale(1.1)} }
 
-/* -------- Stats modal (unchanged visually) -------- */
+/* -------- Stats modal -------- */
 dialog#statsModal{border:none;padding:0;background:transparent}
 dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
 .stats-card{
@@ -245,7 +250,7 @@ dialog#statsModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.
   max-width:100%; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;
 }
 
-/* -------- Scan modal / Enter UPC / FAB (kept) -------- */
+/* -------- Scan modal / Enter UPC / FAB -------- */
 dialog#scanModal{border:none; padding:0; background:transparent; inset:0;}
 dialog#scanModal[open]{display:flex; align-items:center; justify-content:center;}
 dialog#scanModal::backdrop{backdrop-filter: blur(6px); background: rgba(0,0,0,.55)}
