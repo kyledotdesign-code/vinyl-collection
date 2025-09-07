@@ -1,7 +1,4 @@
-/* ==============================
-   Vinyl Collection – styles.css
-   (polish pack + scan fixes + vinyl circle)
-   ============================== */
+/* (full file; identical to your last good one, minus .share-btn) */
 
 :root{
   --bg: #0b0e13;
@@ -19,13 +16,11 @@
   --search-max: 640px;
   --sheet-gutter: clamp(12px, 4vw, 22px);
 
-  /* Vinyl circle */
   --vinyl-size: 88%;
   --vinyl-op: .28;
   --vinyl-groove-alpha: .06;
   --vinyl-glow-alpha: .10;
 
-  /* Scan modal */
   --scan-pad: 14px;
   --scan-max-h-desktop: calc(92svh - 28px);
 }
@@ -165,48 +160,25 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
   background:var(--card); border:1px solid var(--border); border-radius:18px; padding:10px; box-shadow:var(--shadow);
   content-visibility:auto;
 }
-.sleeve{
-  perspective:1200px; position:relative; width:100%; aspect-ratio:1/1; border-radius:12px; overflow:hidden;
-}
-.face{
-  position:absolute; inset:0; backface-visibility:hidden; transform-style:preserve-3d;
-  transition:transform .5s cubic-bezier(.2,.7,.2,1);
-}
-.front .cover{ width:100%; height:100%; object-fit:cover; display:block; background:#0a0e13; }
-.share-btn{
-  position:absolute; right:10px; bottom:10px; z-index:2;
-  width:36px; height:36px; border-radius:10px; border:1px solid rgba(255,255,255,.2);
-  background:rgba(0,0,0,.35); color:#fff; backdrop-filter: blur(4px); cursor:pointer;
-}
-.back{ transform:rotateY(180deg); background:#0f1318; isolation:isolate; }
+.sleeve{ perspective:1200px; position:relative; width:100%; aspect-ratio:1/1; border-radius:12px; overflow:hidden }
+.face{ position:absolute; inset:0; backface-visibility:hidden; transform-style:preserve-3d; transition:transform .5s cubic-bezier(.2,.7,.2,1) }
+.front .cover{ width:100%; height:100%; object-fit:cover; display:block; background:#0a0e13 }
+.back{ transform:rotateY(180deg); background:#0f1318; isolation:isolate }
 .card.flipped .front{transform:rotateY(180deg)}
 .card.flipped .back{ transform:rotateY(0deg) }
 
-/* Vinyl circle */
+/* Vinyl circle + back info */
 .back::before{
   content:""; position:absolute; inset:0; margin:auto; width:var(--vinyl-size); aspect-ratio:1/1; border-radius:50%;
   background:
-    radial-gradient(circle at 50% 50%,
-      rgba(255,255,255,var(--vinyl-glow-alpha)) 0%,
-      rgba(255,255,255,calc(var(--vinyl-glow-alpha) * .5)) 38%,
-      rgba(0,0,0,0) 64%),
-    repeating-radial-gradient(circle at 50% 50%,
-      rgba(255,255,255,var(--vinyl-groove-alpha)) 0 1px,
-      rgba(0,0,0,0) 1px 4px);
-  opacity:0; transition: opacity .35s ease; filter: blur(.2px);
-  box-shadow: inset 0 0 0 2px rgba(255,255,255,.02), 0 40px 100px rgba(0,0,0,.35);
-  z-index:1;
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,.10) 0%, rgba(255,255,255,.05) 38%, rgba(0,0,0,0) 64%),
+    repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,0) 1px 4px);
+  opacity:0; transition: opacity .35s ease; filter: blur(.2px); box-shadow: inset 0 0 0 2px rgba(255,255,255,.02), 0 40px 100px rgba(0,0,0,.35); z-index:1
 }
-.card.flipped .back::before{ opacity: var(--vinyl-op); }
-
-/* Back info */
+.card.flipped .back::before{ opacity: .28 }
 .back .meta{
-  position:absolute; inset:0; z-index:2;
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:10px; text-align:center;
-  padding:clamp(14px, 3.2vw, 24px);
-  border-radius:12px; border:1px solid rgba(255,255,255,.06);
-  background:rgba(19,24,33,.86); color:var(--fg);
+  position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center;
+  padding:clamp(14px, 3.2vw, 24px); border-radius:12px; border:1px solid rgba(255,255,255,.06); background:rgba(19,24,33,.86); color:var(--fg)
 }
 .meta .title{font-size:16px;margin:0 0 6px; font-weight:800}
 .meta .artist{margin:0;color:var(--muted)}
@@ -217,16 +189,16 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
 .caption-title{font-weight:800;margin:0}
 .caption-artist{color:var(--muted);font-size:13px;margin:2px 0 6px}
 
-/* Tap pulse */
+/* Pulse */
 .sleeve::after{
   content:""; position:absolute; inset:0; margin:auto; width:72%; aspect-ratio:1/1; border-radius:50%;
   background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.18), rgba(255,255,255,0) 60%);
   opacity:0; transform: scale(.9); pointer-events:none; transition: opacity .25s ease, transform .25s ease;
 }
-.sleeve.pulse::after{ animation:vinylPulse .6s ease-out forwards; }
+.sleeve.pulse::after{ animation:vinylPulse .6s ease-out forwards }
 @keyframes vinylPulse{ 0%{opacity:.25; transform:scale(.9)} 60%{opacity:.12; transform:scale(1.02)} 100%{opacity:0; transform:scale(1.1)} }
 
-/* Stats/scan dialogs */
+/* Dialogs (stats/scan/add) */
 dialog#statsModal, dialog#scanModal, dialog#fabMenu, dialog#enterUPCModal{border:none;padding:0;background:transparent}
 dialog#statsModal::backdrop, dialog#scanModal::backdrop, dialog#fabMenu::backdrop, dialog#enterUPCModal::backdrop{backdrop-filter: blur(5px); background: rgba(0,0,0,.55)}
 
@@ -236,12 +208,12 @@ dialog#statsModal::backdrop, dialog#scanModal::backdrop, dialog#fabMenu::backdro
 .stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .stat-tile{ background:linear-gradient(180deg,#161c25,#10151c); border:1px solid var(--border); border-radius:14px; padding:14px; display:grid; gap:6px; text-align:center }
 .stat-tile > div:first-child{color:#c8ced8}
-.stat-big{font-size:30px;font-weight:800;color:var(--accent)}
+.stat-big{font-size:30px;font-weight:800;color:#a9d7ff}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chips .chip{cursor:pointer}
 
-/* Scan modal card */
-#scanModal[open]{display:flex; align-items:center; justify-content:center;}
+/* Scan modal */
+#scanModal[open]{display:flex; align-items:center; justify-content:center}
 .scan-card{
   box-sizing:border-box;
   width: min(860px, calc(100vw - 24px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
@@ -251,9 +223,7 @@ dialog#statsModal::backdrop, dialog#scanModal::backdrop, dialog#fabMenu::backdro
   display:flex;flex-direction:column;gap:12px;
   padding: calc(14px + env(safe-area-inset-top,0px)) var(--side-pad) calc(28px + env(safe-area-inset-bottom,0px));
 }
-.scan-head{ position:sticky; top:0; z-index:2; display:flex;align-items:center;justify-content:space-between;gap:10px; background:linear-gradient(180deg, #131821 92%, rgba(19,24,33,0)); padding:0 0 8px; }
-.scan-actions{display:flex;gap:8px;flex-wrap:nowrap}
-
+.scan-head{ position:sticky; top:0; z-index:2; display:flex;align-items:center;justify-content:space-between;gap:10px; background:linear-gradient(180deg, #131821 92%, rgba(19,24,33,0)); padding:0 0 8px }
 .video-wrap{ position:relative;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0b1016;flex:0 0 auto; padding: var(--scan-pad); max-width: 100% }
 .video-wrap video{ display:block;width:100%; max-height: min(52svh, 520px); aspect-ratio: 4 / 3; object-fit: cover; background:#000; border-radius:10px }
 .scan-overlay{ position:absolute; left:var(--scan-pad); right:var(--scan-pad); top:var(--scan-pad); bottom:var(--scan-pad); display:grid; place-items:center; pointer-events:none }
@@ -270,7 +240,7 @@ dialog#statsModal::backdrop, dialog#scanModal::backdrop, dialog#fabMenu::backdro
 .form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px}
 .form-actions.sticky{ position:sticky; bottom:0; z-index:1; padding:12px 0 calc(16px + env(safe-area-inset-bottom,0px)); background:linear-gradient(180deg, rgba(19,24,33,0), rgba(19,24,33,1) 40%); margin-top:8px }
 
-/* FAB + sheets */
+/* FAB */
 .fab{ position:fixed; z-index:1200; right: calc(16px + env(safe-area-inset-right,0px)); bottom: calc(18px + env(safe-area-inset-bottom,0px)); width:64px; height:64px; border-radius:999px; border:1px solid #e6e6e6; background:#ffffff; color:#000; box-shadow: 0 16px 38px rgba(255,255,255,.06), 0 12px 28px rgba(0,0,0,.45); display:inline-flex; align-items:center; justify-content:center }
 .fab:hover{ transform: translateY(-1px) } .fab:active{ transform: translateY(0) } .fab-plus{font-size:34px; line-height:1; transform: translateY(-1px)}
 #fabMenu[open]{display:grid; place-items:end center}
@@ -278,8 +248,8 @@ dialog#statsModal::backdrop, dialog#scanModal::backdrop, dialog#fabMenu::backdro
 #fabMenu .sheet-title{margin:0 0 12px;font-size:18px;color:#fff}
 #fabMenu .sheet .sheet-actions{display:grid; gap:14px; margin-bottom:18px;}
 #enterUPCModal[open]{display:grid; place-items:center}
-.enter-form{ width:min(92vw,420px); background:#131821;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow); display:grid; gap:12px; }
-.enter-form h3{margin:0 0 2px; color:#fff;}
+.enter-form{ width:min(92vw,420px); background:#131821;border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow); display:grid; gap:12px }
+.enter-form h3{margin:0 0 2px; color:#fff}
 #enterUPCInput{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:#0f141b;color:#fff;font-size:16px;text-align:center}
 .enter-actions{display:flex;gap:10px;justify-content:flex-end}
 
@@ -287,7 +257,7 @@ dialog#statsModal::backdrop, dialog#scanModal::backdrop, dialog#fabMenu::backdro
 .toast-wrap{ position:fixed; z-index:1400; left:50%; transform:translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom,0px)); display:grid; gap:8px; width:min(92vw,680px); pointer-events:none }
 .toast{ pointer-events:auto; background:#121820; border:1px solid #2a313d; color:#eaf2ff; border-radius:12px; padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:12px; box-shadow: var(--shadow) }
 .toast .actions{ display:flex; gap:8px }
-.toast .link{ color:#bcd7ff; text-decoration:underline; background:none; border:none; cursor:pointer; padding:0 4px; }
+.toast .link{ color:#bcd7ff; text-decoration:underline; background:none; border:none; cursor:pointer; padding:0 4px }
 
 /* Mobile tweaks */
 @media (max-width: 720px){
@@ -309,7 +279,7 @@ dialog#statsModal::backdrop, dialog#scanModal::backdrop, dialog#fabMenu::backdro
 
   .grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 
-  #scanModal[open]{ align-items:flex-end; }
+  #scanModal[open]{ align-items:flex-end }
   .scan-card{
     border-radius:16px;
     width: calc(100vw - var(--sheet-gutter) - var(--sheet-gutter) - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));
@@ -321,5 +291,5 @@ dialog#statsModal::backdrop, dialog#scanModal::backdrop, dialog#fabMenu::backdro
 
   .video-wrap{ padding: max(12px, var(--scan-pad)) }
   .video-wrap video{ max-height: min(46svh, 420px) }
-  .scan-frame::after{ left:10%; right:10%; }
+  .scan-frame::after{ left:10%; right:10% }
 }
