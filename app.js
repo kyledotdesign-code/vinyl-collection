@@ -668,3 +668,117 @@ loadFromSheet().then(()=>{
 }).catch(()=>{
   alert("Couldn’t load the Google Sheet. Make sure your link is published as CSV (output=csv).");
 });
+
+/* =========================
+   HOTFIX: Cover resolver + Refresh
+   ========================= */
+(function(){
+  // 1) Lightweight helpers (reuse your existing wsrv/looksLikeImage/fromWikipediaPage if present)
+  function wsrv(url){
+    return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1000&h=1000&fit=cover&output=webp&q=85`;
+  }
+  function looksLikeImage(u){ return /\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(u||""); }
+  async function fromWikipediaPage(pageUrl){
+    const m = pageUrl.match(/https?:\/\/(?:\w+\.)?wikipedia\.org\/wiki\/([^?#]+)/i);
+    if(!m) return "";
+    const title = decodeURIComponent(m[1]);
+    try{
+      const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+      if(!r.ok) return "";
+      const j = await r.json();
+      return j?.originalimage?.source || j?.thumbnail?.source || "";
+    }catch{ return ""; }
+  }
+  function fromWikipediaFile(fileUrl){
+    const m = fileUrl.match(/wikipedia\.org\/wiki\/File:(.+)$/i);
+    if(!m) return "";
+    const filename = decodeURIComponent(m[1]);
+    return `https://en.wikipedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}`;
+  }
+
+  // 2) Replace/define chooseCover so it handles File: pages, articles, and direct images
+  const originalChooseCover = window.chooseCover;
+  window.chooseCover = async function chooseCoverFixed(coverRaw, altRaw){
+    const candidate = coverRaw || altRaw || "";
+    if (!candidate) return "";
+
+    // (a) Wikipedia File:... → resolve to actual image URL
+    if (/wikipedia\.org\/wiki\/File:/i.test(candidate)){
+      const direct = fromWikipediaFile(candidate);
+      return direct ? wsrv(direct) : "";
+    }
+
+    // (b) Direct image URL
+    if (looksLikeImage(candidate)){
+      return wsrv(candidate);
+    }
+
+    // (c) Wikipedia article page → use REST summary lead image
+    if (/wikipedia\.org\/wiki\//i.test(candidate)){
+      const img = await fromWikipediaPage(candidate);
+      return img ? wsrv(img) : "";
+    }
+
+    // (d) Fallback to any previous logic if you had it
+    if (typeof originalChooseCover === 'function'){
+      try{ return await originalChooseCover(coverRaw, altRaw) || ""; }catch{}
+    }
+    return "";
+  };
+
+  // 3) Image fallback: if wsrv proxy fails, load original image once
+  document.addEventListener('error', function(e){
+    const el = e.target;
+    if (el && el.tagName === 'IMG' && el.classList.contains('cover')){
+      const src = el.getAttribute('src')||"";
+      if (src.includes('wsrv.nl') && src.includes('url=')){
+        try{
+          const u = new URL(src);
+          const orig = u.searchParams.get('url');
+          if (orig && el.dataset.fallbackTried !== '1'){
+            el.dataset.fallbackTried = '1';
+            el.referrerPolicy = 'no-referrer';
+            el.src = decodeURIComponent(orig);
+          }
+        }catch{}
+      }
+    }
+  }, true);
+
+  // 4) Force a clean refresh (clears local adds, re-parses CSV, re-resolves covers)
+  function clearLocalAdds(){
+    try{
+      Object.keys(localStorage).forEach(k=>{
+        if (/vinyl|upc|record|collection/i.test(k)) localStorage.removeItem(k);
+      });
+    }catch{}
+  }
+
+  async function refreshNow(){
+    clearLocalAdds();
+    // If your app exposes state + loadFromSheet from earlier code:
+    if (window.state && Array.isArray(window.state.all)){
+      window.state.all.forEach(r=>{ r.cover = ""; }); // force re-resolve
+    }
+    if (typeof window.loadFromSheet === 'function'){
+      await window.loadFromSheet();
+    } else {
+      // Fallback: hard reload if the app didn’t expose loadFromSheet
+      location.reload();
+    }
+  }
+
+  // 5) Hook the existing "Update Collection" button (whatever id you used)
+  const refreshBtn = document.querySelector('#refresh,#refreshBtn,#updateBtn,#updateCollection,#update');
+  if (refreshBtn){
+    refreshBtn.addEventListener('click', (ev)=>{
+      // avoid double handlers
+      if (!refreshBtn.dataset.hooked){
+        refreshBtn.dataset.hooked = '1';
+      }
+      ev.preventDefault();
+      refreshNow().catch(console.error);
+    }, {capture:true});
+  }
+})();
+
