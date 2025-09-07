@@ -210,18 +210,30 @@ main{padding: calc(var(--header-h) + 12px) clamp(10px,2vw,28px) 28px}
   justify-items:center;
   gap:10px;
   text-align:center;
-  overflow:hidden;                            /* trims inside glow to edges */
+  overflow:hidden;
 }
 
-/* Guard: kill any accidental backgrounds on children that could create a “pill” look */
-.back .meta > *{ background: transparent !important; }
+/* ---------- HARD RESET inside the back info so old pill styles can't leak ---------- */
+.back .meta > *{
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+  border-radius:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+  line-height:1.25;
+}
 
-/* Text */
+/* Re-apply our intended spacing/colors after the reset */
+.back .meta .title{font-size:16px;margin:0 0 6px !important}
+.back .meta .artist{margin:0 !important;color:var(--muted)}
+.back .meta .genre{margin:10px 0 0 !important;color:var(--accent-2);font-weight:800}
+.back .meta .notes{margin:8px 0 0 !important;color:#c2c6ce;font-size:13px}
+
+/* Front image */
 .front .cover{width:100%;height:100%;object-fit:cover;display:block;background:#0a0e13}
-.meta .title{font-size:16px;margin:0 0 6px}
-.meta .artist{margin:0;color:var(--muted)}
-.meta .genre{margin:10px 0 0;color:var(--accent-2);font-weight:800}
-.meta .notes{margin:8px 0 0;color:#c2c6ce;font-size:13px}
+
+/* Caption under sleeve */
 .caption{text-align:center;padding:8px 6px 2px}
 .caption-title{font-weight:800;margin:0}
 .caption-artist{color:var(--muted);font-size:13px;margin:2px 0 6px}
